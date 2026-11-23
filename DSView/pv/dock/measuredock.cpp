@@ -64,7 +64,8 @@ MeasureDock::MeasureDock(QWidget *parent, View &view, SigSession *session) :
 
     _mouse_groupBox = new QGroupBox(_widget);
     _fen_checkBox = new QCheckBox(_widget);
-    _fen_checkBox->setChecked(true);
+    // Remembered between sessions.
+    _fen_checkBox->setChecked(AppConfig::Instance().appOptions.floatingMeasure);
     _width_time_label = new QLabel(_widget);
     _width_samples_label = new QLabel(_widget);
     _period_time_label = new QLabel(_widget);
@@ -164,6 +165,14 @@ MeasureDock::MeasureDock(QWidget *parent, View &view, SigSession *session) :
     connect(_dist_add_btn, SIGNAL(clicked()), this, SLOT(add_dist_measure()));
     connect(_edge_add_btn, SIGNAL(clicked()), this, SLOT(add_edge_measure()));
     connect(_fen_checkBox, SIGNAL(stateChanged(int)), &_view, SLOT(set_measure_en(int)));
+    connect(_fen_checkBox, &QCheckBox::stateChanged, this, [](int state) {
+        AppConfig &app = AppConfig::Instance();
+        if (app.appOptions.floatingMeasure != (state != 0)) {
+            app.appOptions.floatingMeasure = (state != 0);
+            app.SaveApp();
+        }
+    });
+    _view.set_measure_en(_fen_checkBox->isChecked());
     connect(&_view, SIGNAL(measure_updated()), this, SLOT(measure_updated()));
 
     ADD_UI(this);
@@ -556,7 +565,7 @@ void MeasureDock::popup_all_coursors()
 
     if (cursor_list.empty()) {
         QString strMsg(L_S(STR_PAGE_MSG, S_ID(IDS_MSG_PLEASE_INSERT_CURSOR), 
-                                       "Please insert cursor before using cursor measure."));
+                                       "Please insert a cursor before using cursor measurement."));
         MsgBox::Show(strMsg);
         return;
     }

@@ -329,6 +329,18 @@ public:
         return _view_index;
     }
 
+    /**
+     * A pinned trace (decoders only, logic mode) is laid out at the top of
+     * the view and stays there while the other traces scroll under it.
+     */
+    inline bool pinned(){
+        return _pinned;
+    }
+
+    inline void set_pinned(bool pinned){
+        _pinned = pinned;
+    }
+
 protected:
 
 	/**
@@ -383,6 +395,7 @@ protected:
     int _totalHeight;
     int _typeWidth;
     int _view_index;
+    bool _pinned;
 
     QSizeF _text_size;  
 };

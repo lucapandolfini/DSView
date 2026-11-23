@@ -44,7 +44,7 @@
 // Range of AppOptions::toolbarIconSize; 0 means the style's default.
 #define MinToolbarIconSize     16
 #define MaxToolbarIconSize     64
-#define DefaultToolbarIconSize 40
+#define DefaultToolbarIconSize 32
 
 //--------------------api---
 QString GetIconPath();
@@ -67,6 +67,15 @@ public:
 
 #define APP_CONFIG_VERSION  3
 #define NO_POINT_VALUE  -10000
+
+// Default colours for logic trace levels.
+#define DEFAULT_LOGIC_HIGH_COLOR  QColor(0x00, 0xC0, 0x00)
+#define DEFAULT_LOGIC_LOW_COLOR   QColor(0x7E, 0x7E, 0x7E)
+#define DEFAULT_LOGIC_FILL_COLOR  QColor(0x3B, 0x3B, 0x3C, 0x78)
+
+// Defaults for a new configuration.
+#define DEFAULT_FONT_SIZE           11.0f
+#define DEFAULT_TRACE_HEIGHT_FACTOR 0.54166179895401f
 
 struct AppOptions
 {   
@@ -93,11 +102,23 @@ struct AppOptions
     bool dontAskSaveOnExit;
     float logicSignalLineWidth;
     bool logicChannelDivider;
-    bool logicSnapVScroll;  // snap to trace tops when the scroll bar is released
     bool dsoSplitChannels;
     float dsoSignalLineWidth;
     int   toolbarIconSize; // in px, 0 = the style's default
     int dsoPersistenceMs; // 0 = off; fade-out time of previous scope frames
+    bool  colorLogicHigh;     // Draw HIGH segments of logic traces in logicHighColor
+    bool  colorLogicLow;      // Draw LOW segments of logic traces in logicLowColor
+    QColor logicHighColor;    // HIGH segment colour (colorLogicHigh)
+    QColor logicLowColor;     // LOW segment colour (colorLogicLow)
+    bool  fillLogicHigh;      // Shade the area under HIGH pulses
+    QColor logicFillColor;    // Shade colour, with alpha (fillLogicHigh)
+    bool  showSamplePoints;   // Mark each sample with a dot when zoomed in
+    bool  hoverLine;          // Vertical line following the mouse across all traces
+    bool  cursorDeltaBand;    // Shade cursor pairs (1-2, 3-4, ...) and show the time between them
+    bool  triggerLine;        // Clearly visible line at the trigger position
+    bool  highlightHoverRow;  // Highlight the channel row under the mouse
+    bool  decoderChannelColours; // Bus channels of a decoder in its decoded colours
+    bool  floatingMeasure;    // Measure panel: "Enable floating measurement" (brackets and values at the mouse)
     std::vector<StringPair> m_protocolFormats;
 };
  
@@ -141,6 +162,7 @@ struct UserHistory
   QString   openDir;
   QString   protocolExportPath;
   QString   exportFormat;
+  QString   protocolExportSeparator; // Column separator for decoder (protocol) export
   bool      showDriverHint;
 };
 

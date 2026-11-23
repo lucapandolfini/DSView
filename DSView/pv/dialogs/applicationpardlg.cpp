@@ -43,6 +43,11 @@
 #include <QWindow>
 #include <QStyle>
 #include <QEvent>
+#include <QPushButton>
+#include <QColorDialog>
+#include <QPixmap>
+#include <QIcon>
+#include <QPainter>
 
 #include "../config/appconfig.h"
 #include "../ui/langresource.h"
@@ -151,6 +156,34 @@ private:
     QWidget     *_screenRef;
 };
 
+// Shows a colour swatch on a button. An icon is used rather than a style
+// sheet so the current theme can't override it. A checkerboard behind the
+// swatch makes transparency visible.
+void set_color_button(QPushButton *btn, const QColor &color)
+{
+    QPixmap pix(32, 16);
+    pix.fill(Qt::white);
+    {
+        QPainter p(&pix);
+        for (int y = 0; y < pix.height(); y += 4)
+            for (int x = 0; x < pix.width(); x += 4)
+                if (((x + y) / 4) % 2)
+                    p.fillRect(x, y, 4, 4, QColor(0xC0, 0xC0, 0xC0));
+        p.fillRect(pix.rect(), color);
+        p.setPen(QColor(0x80, 0x80, 0x80));
+        p.drawRect(pix.rect().adjusted(0, 0, -1, -1));
+    }
+    btn->setIcon(QIcon(pix));
+    btn->setIconSize(pix.size());
+    btn->setToolTip(color.alpha() < 255 ? color.name(QColor::HexArgb) : color.name());
+    btn->setProperty("color", color);
+}
+
+QColor color_of_button(QPushButton *btn)
+{
+    return btn->property("color").value<QColor>();
+}
+
 } // namespace
 
 namespace pv
@@ -251,9 +284,6 @@ bool ApplicationParamDlg::ShowDlg(QWidget *parent)
     QCheckBox *ck_channelDivider = new QCheckBox();
     ck_channelDivider->setChecked(app.appOptions.logicChannelDivider);
 
-    QCheckBox *ck_snapVScroll = new QCheckBox();
-    ck_snapVScroll->setChecked(app.appOptions.logicSnapVScroll);
-
     QHBoxLayout *hl_verticalScrollAction = new QHBoxLayout();
     QButtonGroup *bg_verticalScrollAction = new QButtonGroup();
     QRadioButton *rb_zoom = new QRadioButton(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_VERTICAL_SCROLL_ACTION_SMOOTH_ZOOM), "Zoom"));
@@ -314,13 +344,42 @@ bool ApplicationParamDlg::ShowDlg(QWidget *parent)
     spinBox_lineWidth->setValue(app.appOptions.logicSignalLineWidth);
     spinBox_lineWidth->setSuffix(" px");
 
-    QDoubleSpinBox *spinBox_dsoLineWidth = new XDoubleSpinBox();
+    QDoubleSpinBox *spinBox_dsoLineWidth = new QDoubleSpinBox();
     spinBox_dsoLineWidth->setDecimals(1);
     spinBox_dsoLineWidth->setSingleStep(0.5);
     spinBox_dsoLineWidth->setMinimum(1.0);
     spinBox_dsoLineWidth->setMaximum(4.0);
     spinBox_dsoLineWidth->setValue(app.appOptions.dsoSignalLineWidth);
     spinBox_dsoLineWidth->setSuffix(" px");
+
+    // Logic trace colours
+    QCheckBox *ck_colorLogicHigh = new QCheckBox();
+    ck_colorLogicHigh->setChecked(app.appOptions.colorLogicHigh);
+    QCheckBox *ck_colorLogicLow = new QCheckBox();
+    ck_colorLogicLow->setChecked(app.appOptions.colorLogicLow);
+    QCheckBox *ck_fillLogicHigh = new QCheckBox();
+    ck_fillLogicHigh->setChecked(app.appOptions.fillLogicHigh);
+
+    QPushButton *bt_highColor = new QPushButton();
+    QPushButton *bt_lowColor = new QPushButton();
+    QPushButton *bt_fillColor = new QPushButton();
+    QPushButton *bt_resetColors = new QPushButton(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_RESET_COLORS), "Reset colors"));
+    set_color_button(bt_highColor, app.appOptions.logicHighColor);
+    set_color_button(bt_lowColor, app.appOptions.logicLowColor);
+    set_color_button(bt_fillColor, app.appOptions.logicFillColor);
+
+    QCheckBox *ck_showSamplePoints = new QCheckBox();
+    ck_showSamplePoints->setChecked(app.appOptions.showSamplePoints);
+    QCheckBox *ck_hoverLine = new QCheckBox();
+    ck_hoverLine->setChecked(app.appOptions.hoverLine);
+    QCheckBox *ck_highlightHoverRow = new QCheckBox();
+    ck_highlightHoverRow->setChecked(app.appOptions.highlightHoverRow);
+    QCheckBox *ck_cursorDeltaBand = new QCheckBox();
+    ck_cursorDeltaBand->setChecked(app.appOptions.cursorDeltaBand);
+    QCheckBox *ck_triggerLine = new QCheckBox();
+    ck_triggerLine->setChecked(app.appOptions.triggerLine);
+    QCheckBox *ck_decoderChannelColours = new QCheckBox();
+    ck_decoderChannelColours->setChecked(app.appOptions.decoderChannelColours);
 
     QSpinBox *spinBox_dsoPersistence = new XSpinBox();
     spinBox_dsoPersistence->setRange(0, 10000);
@@ -438,35 +497,90 @@ bool ApplicationParamDlg::ShowDlg(QWidget *parent)
     logicLay->addWidget(ck_quickScroll, 0, 1, Qt::AlignRight);
     logicLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_USE_ABORT_DATA_REPEAT), "Used abort data")), 1, 0, Qt::AlignLeft); 
     logicLay->addWidget(ck_abortData, 1, 1, Qt::AlignRight);
-    logicLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_AUTO_SCROLL_LATEAST_DATA), "Auto scoll latest")), 2, 0, Qt::AlignLeft); 
+    logicLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_AUTO_SCROLL_LATEAST_DATA), "Auto scroll to latest data")), 2, 0, Qt::AlignLeft); 
     logicLay->addWidget(ck_autoScrollLatestData, 2, 1, Qt::AlignRight);
     logicLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_VERTICAL_SCROLL_ACTION), "Vertical Scroll Action")), 3, 0, Qt::AlignLeft);
     logicLay->addLayout(hl_verticalScrollAction, 3, 1, Qt::AlignRight);
-    logicLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_SNAP_VSCROLL), "Snap scrolling to channels")), 4, 0, Qt::AlignLeft);
-    logicLay->addWidget(ck_snapVScroll, 4, 1, Qt::AlignRight);
-    logicLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_RULER_UNITS), "Ruler / Cursor units")), 5, 0, Qt::AlignLeft);
-    logicLay->addLayout(hl_units, 5, 1, Qt::AlignRight);
-    logicLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_SIGNAL_LINE_WIDTH), "Signal line width")), 6, 0, Qt::AlignLeft);
-    logicLay->addWidget(spinBox_lineWidth, 6, 1, Qt::AlignRight);
-    logicLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_CHANNEL_DIVIDER), "Channel divider line")), 7, 0, Qt::AlignLeft);
-    logicLay->addWidget(ck_channelDivider, 7, 1, Qt::AlignRight);
+    logicLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_RULER_UNITS), "Ruler / Cursor units")), 4, 0, Qt::AlignLeft);
+    logicLay->addLayout(hl_units, 4, 1, Qt::AlignRight);
+    logicLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_SIGNAL_LINE_WIDTH), "Signal line width")), 5, 0, Qt::AlignLeft);
+    logicLay->addWidget(spinBox_lineWidth, 5, 1, Qt::AlignRight);
+    logicLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_CHANNEL_DIVIDER), "Channel divider line")), 6, 0, Qt::AlignLeft);
+    logicLay->addWidget(ck_channelDivider, 6, 1, Qt::AlignRight);
 
     // Add sliders to logic layout
-    logicLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_DECODER_DYNAMIC_FONT_WIDTH), "Decoder adaptive font width")), 8, 0, Qt::AlignLeft);
-    logicLay->addWidget(ck_decoderDynamicFontWidth, 8, 1, Qt::AlignRight);
-    logicLay->addWidget(label_minFontWidth, 9, 0, Qt::AlignLeft);
-    logicLay->addWidget(spinBox_minFontWidth, 9, 1, Qt::AlignRight);
-    logicLay->addWidget(slider_minFontWidth, 10, 0, Qt::AlignJustify);
-    logicLay->addWidget(label_minSample, 10, 1, Qt::AlignCenter);
-    logicLay->addWidget(label_maxFontWidth, 11, 0, Qt::AlignLeft);
-    logicLay->addWidget(spinBox_maxFontWidth, 11, 1, Qt::AlignRight);
-    logicLay->addWidget(slider_maxFontWidth, 12, 0, Qt::AlignJustify);
-    logicLay->addWidget(label_maxSample, 12, 1, Qt::AlignCenter);
+    logicLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_DECODER_DYNAMIC_FONT_WIDTH), "Decoder adaptive font width")), 7, 0, Qt::AlignLeft);
+    logicLay->addWidget(ck_decoderDynamicFontWidth, 7, 1, Qt::AlignRight);
+    logicLay->addWidget(label_minFontWidth, 8, 0, Qt::AlignLeft);
+    logicLay->addWidget(spinBox_minFontWidth, 8, 1, Qt::AlignRight);
+    logicLay->addWidget(slider_minFontWidth, 9, 0, Qt::AlignJustify);
+    logicLay->addWidget(label_minSample, 9, 1, Qt::AlignCenter);
+    logicLay->addWidget(label_maxFontWidth, 10, 0, Qt::AlignLeft);
+    logicLay->addWidget(spinBox_maxFontWidth, 10, 1, Qt::AlignRight);
+    logicLay->addWidget(slider_maxFontWidth, 11, 0, Qt::AlignJustify);
+    logicLay->addWidget(label_maxSample, 11, 1, Qt::AlignCenter);
     logicLay->setColumnMinimumWidth(1, wfm.horizontalAdvance("Example")
         + logicLay->contentsMargins().left()
         + logicLay->contentsMargins().right()
         + 1 );
     lay->addWidget(logicGroup);
+
+    // Logic trace colours group
+    QGroupBox *colorGroup = new QGroupBox(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_GROUP_LOGIC_COLORS), "Logic trace colors"));
+    QGridLayout *colorLay = new QGridLayout();
+    colorLay->setContentsMargins(10,15,15,10);
+    colorLay->setAlignment(Qt::AlignTop);
+    colorLay->setColumnStretch(0, 1);
+    colorGroup->setLayout(colorLay);
+    const QString highTitle = L_S(STR_PAGE_DLG, S_ID(IDS_DLG_HIGH_LEVEL_COLOR), "High level color");
+    const QString lowTitle = L_S(STR_PAGE_DLG, S_ID(IDS_DLG_LOW_LEVEL_COLOR), "Low level color");
+    const QString fillTitle = L_S(STR_PAGE_DLG, S_ID(IDS_DLG_FILL_COLOR), "Fill color");
+    // One row per colour: its swatch, then the switch that turns it on, so
+    // each level can keep the channel colour or take its own.
+    colorLay->addWidget(new QLabel(highTitle), 0, 0, Qt::AlignLeft);
+    colorLay->addWidget(bt_highColor, 0, 1, Qt::AlignRight);
+    colorLay->addWidget(ck_colorLogicHigh, 0, 2, Qt::AlignRight);
+    colorLay->addWidget(new QLabel(lowTitle), 1, 0, Qt::AlignLeft);
+    colorLay->addWidget(bt_lowColor, 1, 1, Qt::AlignRight);
+    colorLay->addWidget(ck_colorLogicLow, 1, 2, Qt::AlignRight);
+    colorLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_FILL_LOGIC_HIGH), "Fill high areas")), 2, 0, Qt::AlignLeft);
+    colorLay->addWidget(bt_fillColor, 2, 1, Qt::AlignRight);
+    colorLay->addWidget(ck_fillLogicHigh, 2, 2, Qt::AlignRight);
+    colorLay->addWidget(bt_resetColors, 3, 1, 1, 2, Qt::AlignRight);
+    // Channels a decoder groups into a bus (e.g. A0-A15) in the colour of
+    // that bus's decoded data. Only decoders that ask for it.
+    colorLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_DECODER_CHANNEL_COLORS), "Bus channels in decoder colors")), 4, 0, Qt::AlignLeft);
+    colorLay->addWidget(ck_decoderChannelColours, 4, 2, Qt::AlignRight);
+    lay->addWidget(colorGroup);
+
+    auto pick_color = [&dlg](QPushButton *btn, const QString &title, bool alpha) {
+        QColorDialog::ColorDialogOptions options;
+        if (alpha)
+            options |= QColorDialog::ShowAlphaChannel;
+        QColor c = QColorDialog::getColor(color_of_button(btn), &dlg, title, options);
+        if (c.isValid())
+            set_color_button(btn, c);
+        return c.isValid();
+    };
+    // Picking a colour turns it on.
+    QObject::connect(bt_highColor, &QPushButton::clicked, [=]() {
+        if (pick_color(bt_highColor, highTitle, false))
+            ck_colorLogicHigh->setChecked(true);
+    });
+    QObject::connect(bt_lowColor, &QPushButton::clicked, [=]() {
+        if (pick_color(bt_lowColor, lowTitle, false))
+            ck_colorLogicLow->setChecked(true);
+    });
+    QObject::connect(bt_fillColor, &QPushButton::clicked, [=]() {
+        if (pick_color(bt_fillColor, fillTitle, true))
+            ck_fillLogicHigh->setChecked(true);
+    });
+    QObject::connect(bt_resetColors, &QPushButton::clicked, [=]() {
+        set_color_button(bt_highColor, DEFAULT_LOGIC_HIGH_COLOR);
+        set_color_button(bt_lowColor, DEFAULT_LOGIC_LOW_COLOR);
+        set_color_button(bt_fillColor, DEFAULT_LOGIC_FILL_COLOR);
+    });
+
 
     //Scope group
     QGroupBox *dsoGroup = new QGroupBox(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_GROUP_DSO), "Scope"));
@@ -475,7 +589,7 @@ bool ApplicationParamDlg::ShowDlg(QWidget *parent)
     dsoLay->setAlignment(Qt::AlignTop);
     dsoLay->setColumnStretch(0, 1);
     dsoGroup->setLayout(dsoLay);
-    dsoLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_TRIG_DISPLAY_MIDDLE), "Tig pos in middle")), 0, 0, Qt::AlignLeft);
+    dsoLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_TRIG_DISPLAY_MIDDLE), "Show trigger position in the middle")), 0, 0, Qt::AlignLeft);
     dsoLay->addWidget(ck_trigInMid, 0, 1, Qt::AlignRight);
     dsoLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_SIGNAL_LINE_WIDTH), "Signal line width")), 1, 0, Qt::AlignLeft);
     dsoLay->addWidget(spinBox_dsoLineWidth, 1, 1, Qt::AlignRight);
@@ -501,6 +615,25 @@ bool ApplicationParamDlg::ShowDlg(QWidget *parent)
     uiLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_DONT_ASK_SAVE_ON_EXIT), "Do not ask to save captured data")), 4, 0, Qt::AlignLeft);
     uiLay->addWidget(ck_dontAskSaveOnExit, 4, 1, Qt::AlignRight);
     lay->addWidget(uiGroup);
+
+    // Waveform view group: aids drawn over the traces
+    QGroupBox *viewGroup = new QGroupBox(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_GROUP_WAVEFORM_VIEW), "Waveform view"));
+    QGridLayout *viewLay = new QGridLayout();
+    viewLay->setContentsMargins(10,15,15,10);
+    viewLay->setAlignment(Qt::AlignTop);
+    viewLay->setColumnStretch(0, 1);
+    viewGroup->setLayout(viewLay);
+    viewLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_SHOW_SAMPLE_POINTS), "Show sample points when zoomed in")), 0, 0, Qt::AlignLeft);
+    viewLay->addWidget(ck_showSamplePoints, 0, 1, Qt::AlignRight);
+    viewLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_HOVER_LINE), "Vertical line at mouse position")), 1, 0, Qt::AlignLeft);
+    viewLay->addWidget(ck_hoverLine, 1, 1, Qt::AlignRight);
+    viewLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_HIGHLIGHT_HOVER_ROW), "Highlight channel under mouse")), 2, 0, Qt::AlignLeft);
+    viewLay->addWidget(ck_highlightHoverRow, 2, 1, Qt::AlignRight);
+    viewLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_CURSOR_DELTA_BAND), "Time between cursors (1-2, 3-4, ...)")), 3, 0, Qt::AlignLeft);
+    viewLay->addWidget(ck_cursorDeltaBand, 3, 1, Qt::AlignRight);
+    viewLay->addWidget(new QLabel(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_TRIGGER_LINE), "Highlight trigger position")), 4, 0, Qt::AlignLeft);
+    viewLay->addWidget(ck_triggerLine, 4, 1, Qt::AlignRight);
+    lay->addWidget(viewGroup);
 
     // The groups scroll when the dialog would not fit on the screen.
     QWidget *content = new QWidget();
@@ -600,8 +733,52 @@ bool ApplicationParamDlg::ShowDlg(QWidget *parent)
             app.appOptions.logicChannelDivider = ck_channelDivider->isChecked();
             bAppChanged = true;
         }
-        if (app.appOptions.logicSnapVScroll != ck_snapVScroll->isChecked()) {
-            app.appOptions.logicSnapVScroll = ck_snapVScroll->isChecked();
+        if (app.appOptions.colorLogicHigh != ck_colorLogicHigh->isChecked()) {
+            app.appOptions.colorLogicHigh = ck_colorLogicHigh->isChecked();
+            bAppChanged = true;
+        }
+        if (app.appOptions.colorLogicLow != ck_colorLogicLow->isChecked()) {
+            app.appOptions.colorLogicLow = ck_colorLogicLow->isChecked();
+            bAppChanged = true;
+        }
+        if (app.appOptions.logicHighColor != color_of_button(bt_highColor)) {
+            app.appOptions.logicHighColor = color_of_button(bt_highColor);
+            bAppChanged = true;
+        }
+        if (app.appOptions.logicLowColor != color_of_button(bt_lowColor)) {
+            app.appOptions.logicLowColor = color_of_button(bt_lowColor);
+            bAppChanged = true;
+        }
+        if (app.appOptions.fillLogicHigh != ck_fillLogicHigh->isChecked()) {
+            app.appOptions.fillLogicHigh = ck_fillLogicHigh->isChecked();
+            bAppChanged = true;
+        }
+        if (app.appOptions.logicFillColor != color_of_button(bt_fillColor)) {
+            app.appOptions.logicFillColor = color_of_button(bt_fillColor);
+            bAppChanged = true;
+        }
+        if (app.appOptions.showSamplePoints != ck_showSamplePoints->isChecked()) {
+            app.appOptions.showSamplePoints = ck_showSamplePoints->isChecked();
+            bAppChanged = true;
+        }
+        if (app.appOptions.hoverLine != ck_hoverLine->isChecked()) {
+            app.appOptions.hoverLine = ck_hoverLine->isChecked();
+            bAppChanged = true;
+        }
+        if (app.appOptions.highlightHoverRow != ck_highlightHoverRow->isChecked()) {
+            app.appOptions.highlightHoverRow = ck_highlightHoverRow->isChecked();
+            bAppChanged = true;
+        }
+        if (app.appOptions.cursorDeltaBand != ck_cursorDeltaBand->isChecked()) {
+            app.appOptions.cursorDeltaBand = ck_cursorDeltaBand->isChecked();
+            bAppChanged = true;
+        }
+        if (app.appOptions.triggerLine != ck_triggerLine->isChecked()) {
+            app.appOptions.triggerLine = ck_triggerLine->isChecked();
+            bAppChanged = true;
+        }
+        if (app.appOptions.decoderChannelColours != ck_decoderChannelColours->isChecked()) {
+            app.appOptions.decoderChannelColours = ck_decoderChannelColours->isChecked();
             bAppChanged = true;
         }
         if (bAppChanged){

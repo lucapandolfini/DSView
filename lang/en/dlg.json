@@ -60,6 +60,18 @@
         "text": "About"
     },
     {
+        "id": "IDS_DLG_ABOUT_FORKED_FROM",
+        "text": "Forked from:"
+    },
+    {
+        "id": "IDS_DLG_ABOUT_FORK_BY",
+        "text": "Fork by %1:"
+    },
+    {
+        "id": "IDS_DLG_ABOUT_REFORKED_BY",
+        "text": "Re-forked by %1:"
+    },
+    {
         "id": "IDS_DLG_DISPLAY_OPTIONS",
         "text": "Display options"
     },
@@ -177,7 +189,7 @@
     },
     {
         "id": "IDS_DLG_DBV_RANGE",
-        "text": "DBV Range: "
+        "text": "dBV Range: "
     },
     {
         "id": "IDS_DLG_FFT_OPTIONS",
@@ -209,7 +221,7 @@
     },
     {
         "id": "IDS_DLG_SUBSTRACT",
-        "text": "Substract"
+        "text": "Subtract"
     },
     {
         "id": "IDS_DLG_MULTIPLY",
@@ -321,15 +333,15 @@
     },
     {
         "id": "IDS_DLG_US",
-        "text": "uS"
+        "text": "µs"
     },
     {
         "id": "IDS_DLG_MS",
-        "text": "mS"
+        "text": "ms"
     },
     {
         "id": "IDS_DLG_S",
-        "text": "S"
+        "text": "s"
     },
     {
         "id": "IDS_DLG_TRIGGER_POSITION",
@@ -553,7 +565,7 @@
     },
     {
         "id": "IDS_DLG_DEL_GROUP",
-        "text": "Del Group"
+        "text": "Delete Group"
     },
     {
         "id": "IDS_DLG_SET_CHANNEL_COLOUR",
@@ -693,7 +705,7 @@
     },
     {
         "id": "IDS_DLG_TRIG_DISPLAY_MIDDLE",
-        "text": "Trig pos display at the middle"
+        "text": "Show trigger position in the middle"
     },
     {
         "id": "IDS_DLG_DISPLAY_PROFILE_IN_BAR",
@@ -717,11 +729,11 @@
     },
     {
         "id": "IDS_DLG_SERIAL_HEX",
-        "text": "Hex :"
+        "text": "Hex:"
     },
     {
         "id": "IDS_DLG_SERIAL_INPUT_AS_HEX",
-        "text": "Input with hex format"
+        "text": "Input in hex format"
     },
     {
         "id": "IDS_DLG_USE_ABORT_DATA_REPEAT",
@@ -753,7 +765,7 @@
     },
     {
         "id": "IDS_DLG_DATA_OUT_OFF_RANGE",
-        "text": "Data out off range"
+        "text": "Data out of range"
     },
     {
         "id": "IDS_DLG_START_CURSOR",
@@ -817,7 +829,7 @@
     },
     {
         "id": "IDS_FFT_WINDOW_FLATTOP",
-        "text": "Flat_top"
+        "text": "Flat top"
     },
     {
         "id": "IDS_FFT_MODE_LINEARRSM",
@@ -860,7 +872,111 @@
         "text": "Off"
     },
     {
-        "id": "IDS_DLG_SNAP_VSCROLL",
-        "text": "Snap scrolling to channels"
+        "id": "IDS_DLG_EXPORT_SEPARATOR",
+        "text": "Separator: "
+    },
+    {
+        "id": "IDS_DLG_SEPARATOR_COMMA",
+        "text": "Comma ( , )"
+    },
+    {
+        "id": "IDS_DLG_SEPARATOR_SEMICOLON",
+        "text": "Semicolon ( ; )"
+    },
+    {
+        "id": "IDS_DLG_SEPARATOR_TAB",
+        "text": "Tab"
+    },
+    {
+        "id": "IDS_DLG_SEPARATOR_PIPE",
+        "text": "Pipe ( | )"
+    },
+    {
+        "id": "IDS_DLG_SEPARATOR_SPACE",
+        "text": "Space"
+    },
+    {
+        "id": "IDS_DLG_EXPORT_BETWEEN_CURSORS",
+        "text": "Only between cursors: "
+    },
+    {
+        "id": "IDS_DLG_EXPORT_RANGE_NEED_CURSORS",
+        "text": "Place at least two cursors on the waveform to use this."
+    },
+    {
+        "id": "IDS_DLG_GROUP_LOGIC_COLORS",
+        "text": "Logic trace colors"
+    },
+    {
+        "id": "IDS_DLG_HIGH_LEVEL_COLOR",
+        "text": "High level color"
+    },
+    {
+        "id": "IDS_DLG_LOW_LEVEL_COLOR",
+        "text": "Low level color"
+    },
+    {
+        "id": "IDS_DLG_FILL_LOGIC_HIGH",
+        "text": "Fill high areas"
+    },
+    {
+        "id": "IDS_DLG_FILL_COLOR",
+        "text": "Fill color"
+    },
+    {
+        "id": "IDS_DLG_RESET_COLORS",
+        "text": "Reset colors"
+    },
+    {
+        "id": "IDS_DLG_SHOW_SAMPLE_POINTS",
+        "text": "Show sample points when zoomed in"
+    },
+    {
+        "id": "IDS_DLG_HOVER_LINE",
+        "text": "Vertical line at mouse position"
+    },
+    {
+        "id": "IDS_DLG_COPY_ANNOTATION",
+        "text": "Copy annotation text"
+    },
+    {
+        "id": "IDS_DLG_COPY_ANNOTATION_WITH_ROW",
+        "text": "Copy with row name"
+    },
+    {
+        "id": "IDS_DLG_SIGNAL_LINE_WIDTH",
+        "text": "Signal line width"
+    },
+    {
+        "id": "IDS_DLG_CHANNEL_DIVIDER",
+        "text": "Channel divider line"
+    },
+    {
+        "id": "IDS_DLG_GROUP_WAVEFORM_VIEW",
+        "text": "Waveform view"
+    },
+    {
+        "id": "IDS_DLG_HIGHLIGHT_HOVER_ROW",
+        "text": "Highlight channel under mouse"
+    },
+    {
+        "id": "IDS_DLG_CURSOR_DELTA_BAND",
+        "text": "Time between cursors (1-2, 3-4, ...)"
+    },
+    {
+        "id": "IDS_DLG_TRIGGER_LINE",
+        "text": "Highlight trigger position"
+    },
+    {
+        "id": "IDS_DLG_PIN_DECODER",
+        "text": "Pin to top"
+    },
+    {
+        "id": "IDS_DLG_UNPIN_DECODER",
+        "text": "Unpin"
+    },
+    {
+        "id": "IDS_DLG_DECODER_CHANNEL_COLORS",
+        "text": "Bus channels in decoder colors"
     }
 ]

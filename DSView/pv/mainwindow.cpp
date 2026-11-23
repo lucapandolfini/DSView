@@ -314,6 +314,10 @@ namespace pv
         connect(_trig_bar, SIGNAL(sig_setTheme(QString)), this, SLOT(switchTheme(QString)));
         connect(_trig_bar, SIGNAL(sig_show_lissajous(bool)), _view, SLOT(show_lissajous(bool)));
         connect(_trig_bar, &toolbars::TrigBar::sig_dso_split, _view, &view::View::set_dso_split_channels);
+        connect(_trig_bar, &toolbars::TrigBar::sig_fit_vertical, _view, &view::View::fit_traces_vertically);
+        connect(_trig_bar, &toolbars::TrigBar::sig_go_begin, _view, &view::View::scroll_to_begin);
+        connect(_trig_bar, &toolbars::TrigBar::sig_go_trigger, _view, &view::View::scroll_to_trigger);
+        connect(_trig_bar, &toolbars::TrigBar::sig_go_end, _view, &view::View::scroll_to_end);
 
         // file toolbar
         connect(_file_bar, SIGNAL(sig_load_file(QString)), this, SLOT(on_load_file(QString)));
@@ -441,11 +445,11 @@ namespace pv
             _session->stop_capture();
             title = L_S(STR_PAGE_MSG, S_ID(IDS_MSG_DATA_OVERFLOW), "Data Overflow");
             details = L_S(STR_PAGE_MSG, S_ID(IDS_MSG_DATA_OVERFLOW_DET), 
-                      "USB bandwidth can not support current sample rate! \nPlease reduce the sample rate!");
+                      "USB bandwidth cannot support the current sample rate!\nPlease reduce the sample rate!");
             break;
         default:
             title = L_S(STR_PAGE_MSG, S_ID(IDS_MSG_UNDEFINED_ERROR), "Undefined Error");
-            details = L_S(STR_PAGE_MSG, S_ID(IDS_MSG_UNDEFINED_ERROR_DET), "Not expected error!");
+            details = L_S(STR_PAGE_MSG, S_ID(IDS_MSG_UNDEFINED_ERROR_DET), "Unexpected error!");
             break;
         }
 

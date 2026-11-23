@@ -194,5 +194,41 @@
     {
         "id": "IDS_TOOLBAR_HELP_LOG",
         "text": "&Protokolloptionen"
+    },
+    {
+        "id": "IDS_TOOLBAR_FIT_VERTICAL",
+        "text": "Anpassen"
+    },
+    {
+        "id": "IDS_TOOLBAR_FIT_VERTICAL_TIP",
+        "text": "Alle Kanäle verkleinern, bis sie ins Fenster passen"
+    },
+    {
+        "id": "IDS_TOOLBAR_DSO_SPLIT",
+        "text": "Teilen"
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_BEGIN",
+        "text": "Anfang"
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_BEGIN_TIP",
+        "text": "Zum Anfang der Aufnahme springen, der Zoom bleibt"
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_TRIG",
+        "text": "Trigger-Pos."
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_TRIG_TIP",
+        "text": "Ansicht auf die Triggerposition zentrieren, der Zoom bleibt"
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_END",
+        "text": "Ende"
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_END_TIP",
+        "text": "Zum Ende der Aufnahme springen, der Zoom bleibt"
     }
 ]

@@ -124,7 +124,7 @@ int main(int argc, char *argv[])
 
 		case 'V': // version
 		case 'v':
-			printf("%s %s\n", DS_TITLE, DS_VERSION_STRING);
+			printf("%s %s\n", DS_TITLE, DS_DISPLAY_VERSION);
 			return 0;
  
 		case 'h': // get help
@@ -175,7 +175,8 @@ bool bHighScale = true;
     a.setStyle(new MyStyle);
 
     // Set some application metadata
-    QApplication::setApplicationVersion(DS_VERSION_STRING);
+    // With the fix revision: the title bar and About dialog show this.
+    QApplication::setApplicationVersion(DS_DISPLAY_VERSION);
     QApplication::setApplicationName("DSView");
     QApplication::setOrganizationName("DreamSourceLab");
     QApplication::setOrganizationDomain("www.DreamSourceLab.com");
@@ -218,7 +219,7 @@ bool bHighScale = true;
 	}
 
 	//----------------------run
-	dsv_info("----------------- version: %s-----------------", DS_VERSION_STRING);
+	dsv_info("----------------- version: %s-----------------", DS_DISPLAY_VERSION);
 	dsv_info("Qt:%s", QT_VERSION_STR);
 
 	// The themes draw every checkbox, radio button, combobox arrow and window

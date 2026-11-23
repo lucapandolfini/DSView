@@ -28,6 +28,8 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QStyleOption>
+#include <QCursor>
+#include <vector>
 #include "cursor.h"
 #include "view.h"
 #include "viewport.h"
@@ -52,7 +54,7 @@ const int Ruler::MinPeriodScale = 10;
 const QString Ruler::SIPrefixes[9] =
 	{"f", "p", "n", QChar(0x03BC), "m", "", "k", "M", "G"};
 const QString Ruler::FreqPrefixes[9] =
-    {"P", "T", "G", "M", "K", "", "", "", ""};
+    {"P", "T", "G", "M", "k", "", "", "", ""};
 const int Ruler::FirstSIPrefixPower = -15;
 const int Ruler::pricision = 2;
 
@@ -92,6 +94,7 @@ Ruler::Ruler(View &parent) :
     _cursor_go_visible(false),
     _cursor_sel_x(-1),
     _grabbed_marker(NULL),
+    _front_label(NULL),
     _hitCursor(false),
     _curs_moved(false)
 {
@@ -161,6 +164,11 @@ QString Ruler::format_time(double t, int prefix,
     char format[15];
     QString units = SIPrefixes[prefix] + "s";
     double v = (t * multiplier) / 1000000.0;
+    // A value that rounds to zero is "+0.00", not "-0.00": the tick at the
+    // trigger is often a hair below zero after the floating point steps.
+    if (fabs(v) < 0.5 * pow(10.0, -(int)precision)) {
+        v = 0.0;
+    }
     if(v >= 0) {
         *(b++) = '+';
     }
@@ -307,11 +315,22 @@ void Ruler::mousePressEvent(QMouseEvent *event)
 
         if (!_cursor_sel_visible && cursor_list.size()) {
             _view.show_cursors(true);
-            auto i = cursor_list.begin();
 
-            while (i != cursor_list.end()) {
+            // The label drawn on top gets the click first.
+            std::vector<Cursor*> hit_order;
+            for (auto c : cursor_list) {
+                if (c == _front_label)
+                    hit_order.insert(hit_order.begin(), c);
+                else
+                    hit_order.push_back(c);
+            }
+            auto i = hit_order.begin();
+
+            while (i != hit_order.end()) {
                 const QRect cursor_rect((*i)->get_label_rect(rect(), visible));
                 if ((*i)->get_close_rect(cursor_rect).contains(event->pos())) {
+                    if (*i == _front_label)
+                        _front_label = NULL;
                     _view.del_cursor(*i);
 
                     if (cursor_list.empty()) {
@@ -435,6 +454,72 @@ void Ruler::mouseReleaseEvent(QMouseEvent *event)
     if (updatedCursor) {
         _view.viewport()->update();
     }
+}
+
+void Ruler::paint_cursor_labels(QPainter &p, unsigned int prefix, bool has_hoff, bool show_samples)
+{
+    const int LabelGap = 2;
+
+    auto &cursor_list = _view.get_cursorList();
+    if (cursor_list.empty()) {
+        _front_label = NULL;
+        return;
+    }
+
+    const QPoint mouse = underMouse() ? mapFromGlobal(QCursor::pos()) : QPoint(-1, -1);
+
+    // Full-size labels first, to find the ones that would overlap.
+    std::vector<std::pair<Cursor*, QRect>> labels;
+    for (auto cursor : cursor_list) {
+        bool visible;
+        cursor->set_label_compact(false);
+        cursor->prepare_label(p, show_samples);
+        const QRect r = cursor->get_label_rect(rect(), visible, has_hoff);
+        if (visible)
+            labels.push_back(std::make_pair(cursor, r));
+    }
+
+    for (size_t i = 0; i < labels.size(); i++) {
+        for (size_t j = i + 1; j < labels.size(); j++) {
+            if (labels[i].second.adjusted(-LabelGap, 0, LabelGap, 0).intersects(labels[j].second)) {
+                labels[i].first->set_label_compact(true);
+                labels[j].first->set_label_compact(true);
+            }
+        }
+    }
+
+    // The label being dragged, or under the mouse, is drawn in full on top.
+    // Once expanded it stays so while the mouse is anywhere on it.
+    Cursor *front = NULL;
+    for (auto &l : labels) {
+        if (l.first == _grabbed_marker)
+            front = l.first;
+    }
+    if (front == NULL && _front_label != NULL) {
+        for (auto &l : labels) {
+            if (l.first == _front_label && l.second.contains(mouse))
+                front = l.first;
+        }
+    }
+    if (front == NULL) {
+        for (auto &l : labels) {
+            bool visible;
+            if (l.first->get_label_rect(rect(), visible, has_hoff).contains(mouse)) {
+                front = l.first;
+                break;
+            }
+        }
+    }
+    _front_label = front;
+    if (front != NULL)
+        front->set_label_compact(false);
+
+    for (auto &l : labels) {
+        if (l.first != front)
+            l.first->paint_label(p, rect(), prefix, has_hoff, show_samples);
+    }
+    if (front != NULL)
+        front->paint_label(p, rect(), prefix, has_hoff, show_samples);
 }
 
 void Ruler::draw_logic_tick_mark(QPainter &p)
@@ -574,16 +659,12 @@ void Ruler::draw_logic_tick_mark(QPainter &p)
     } while (x < rect().right());
 
     // Draw the cursors
-    auto &cursor_list = _view.get_cursorList();
     bool bWorkStoped = _view.session().is_stopped_status();
-
-    for (auto cursor : cursor_list)
-    {
-        cursor->paint_label(p, rect(), prefix, bWorkStoped, isShowSamples);
-    }
+    paint_cursor_labels(p, prefix, bWorkStoped, isShowSamples);
 
     if (_view.trig_cursor_shown()) {
-        _view.get_trig_cursor()->paint_fix_label(p, rect(), prefix, 'T', _view.get_trig_cursor()->get_color(), false, isShowSamples);
+        _view.get_trig_cursor()->paint_fix_label(p, rect(), prefix, 'T', _view.get_trig_cursor()->get_color(), false, isShowSamples,
+                                                 2 * ValueMargin + text_height - 1);
     }
     if (_view.search_cursor_shown()) {
         _view.get_search_cursor()->paint_fix_label(p, rect(), prefix, 'S', _view.get_search_cursor()->get_color(), true, isShowSamples);
@@ -688,18 +769,12 @@ void Ruler::draw_osc_tick_mark(QPainter &p)
     } while (x < rect().right());
 
     // Draw the cursors
-    auto &cursor_list = _view.get_cursorList();
-
-    if (!cursor_list.empty()) {
-        bool bWorkStoped = _view.session().is_stopped_status();
-
-        for (auto cursor : cursor_list) {
-            cursor->paint_label(p, rect(), prefix, bWorkStoped, false);
-        }
-    }
+    bool bWorkStoped = _view.session().is_stopped_status();
+    paint_cursor_labels(p, prefix, bWorkStoped, false);
     
     if (_view.trig_cursor_shown()) {
-        _view.get_trig_cursor()->paint_fix_label(p, rect(), prefix, 'T', _view.get_trig_cursor()->get_color(), false, false);
+        _view.get_trig_cursor()->paint_fix_label(p, rect(), prefix, 'T', _view.get_trig_cursor()->get_color(), false, false,
+                                                 2 * ValueMargin + text_height - 1);
     }
     if (_view.search_cursor_shown()) {
         _view.get_search_cursor()->paint_fix_label(p, rect(), prefix, 'S', _view.get_search_cursor()->get_color(), true, false);

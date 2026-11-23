@@ -52,7 +52,11 @@ TrigBar::TrigBar(SigSession *session, QWidget *parent) :
     _search_button(this),
     _function_button(this),
     _setting_button(this),
-    _dso_split_button(this)
+    _dso_split_button(this),
+    _vfit_button(this),
+    _go_begin_button(this),
+    _go_trig_button(this),
+    _go_end_button(this)
 {
     _enable = true;
 
@@ -108,10 +112,15 @@ TrigBar::TrigBar(SigSession *session, QWidget *parent) :
 
      _action_dispalyOptions = new QAction(this);
 
+    // Also in the Display menu: in a narrow window the toolbar's Fit button
+    // ends up in the overflow.
+    _action_vfit = new QAction(this);
+
     _display_menu = new QMenu(this);
     _display_menu->setContentsMargins(0,0,0,0);
     
     _display_menu->addAction(_action_lissajous);    
+    _display_menu->addAction(_action_vfit);
     _display_menu->addMenu(_themes);
 	_display_menu->addAction(_action_dispalyOptions);
 
@@ -126,6 +135,10 @@ TrigBar::TrigBar(SigSession *session, QWidget *parent) :
     _setting_button.setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
     _dso_split_button.setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
     _dso_split_button.setCheckable(true);
+    _vfit_button.setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    _go_begin_button.setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    _go_trig_button.setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    _go_end_button.setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
 
     _protocol_button.setContentsMargins(0,0,0,0);
 
@@ -136,12 +149,20 @@ TrigBar::TrigBar(SigSession *session, QWidget *parent) :
     _function_action = addWidget(&_function_button);
     _display_action = addWidget(&_setting_button); //must be created
     _dso_split_action = addWidget(&_dso_split_button);
+    _vfit_action = addWidget(&_vfit_button);
+    _go_begin_action = addWidget(&_go_begin_button);
+    _go_trig_action = addWidget(&_go_trig_button);
+    _go_end_action = addWidget(&_go_end_button);
 
     connect(&_trig_button, SIGNAL(clicked()),this, SLOT(trigger_clicked()));
     connect(&_protocol_button, SIGNAL(clicked()),this, SLOT(protocol_clicked()));
     connect(&_measure_button, SIGNAL(clicked()),this, SLOT(measure_clicked()));
     connect(&_search_button, SIGNAL(clicked()), this, SLOT(search_clicked()));
     connect(&_dso_split_button, SIGNAL(clicked()), this, SLOT(dso_split_clicked()));
+    connect(&_vfit_button, SIGNAL(clicked()), this, SLOT(vfit_clicked()));
+    connect(&_go_begin_button, SIGNAL(clicked()), this, SIGNAL(sig_go_begin()));
+    connect(&_go_trig_button, SIGNAL(clicked()), this, SIGNAL(sig_go_trigger()));
+    connect(&_go_end_button, SIGNAL(clicked()), this, SIGNAL(sig_go_end()));
 
     connect(_action_fft, SIGNAL(triggered()), this, SLOT(on_actionFft_triggered()));
     connect(_action_math, SIGNAL(triggered()), this, SLOT(on_actionMath_triggered()));
@@ -154,6 +175,7 @@ TrigBar::TrigBar(SigSession *session, QWidget *parent) :
     connect(_latte_style, SIGNAL(triggered()), this, SLOT(on_actionLatte_triggered()));
     connect(_frappe_style, SIGNAL(triggered()), this, SLOT(on_actionFrappe_triggered()));
     connect(_action_dispalyOptions, SIGNAL(triggered()), this, SLOT(on_display_setting()));
+    connect(_action_vfit, SIGNAL(triggered()), this, SLOT(vfit_clicked()));
 
     ADD_UI(this);
 }
@@ -171,6 +193,18 @@ void TrigBar::retranslateUi()
     _search_button.setText(L_S(STR_PAGE_TOOLBAR, S_ID(IDS_TOOLBAR_SEARCH), "Search"));
     _function_button.setText(L_S(STR_PAGE_TOOLBAR, S_ID(IDS_TOOLBAR_FUNCTION), "Function"));
     _dso_split_button.setText(L_S(STR_PAGE_TOOLBAR, S_ID(IDS_TOOLBAR_DSO_SPLIT), "Split"));
+    _vfit_button.setText(L_S(STR_PAGE_TOOLBAR, S_ID(IDS_TOOLBAR_FIT_VERTICAL), "Fit"));
+    _vfit_button.setToolTip(L_S(STR_PAGE_TOOLBAR, S_ID(IDS_TOOLBAR_FIT_VERTICAL_TIP),
+                                "Shrink all channels to fit the window"));
+    _go_begin_button.setText(L_S(STR_PAGE_TOOLBAR, S_ID(IDS_TOOLBAR_GO_BEGIN), "Begin"));
+    _go_begin_button.setToolTip(L_S(STR_PAGE_TOOLBAR, S_ID(IDS_TOOLBAR_GO_BEGIN_TIP),
+                                    "Go to the start of the capture, keeping the zoom"));
+    _go_trig_button.setText(L_S(STR_PAGE_TOOLBAR, S_ID(IDS_TOOLBAR_GO_TRIG), "Trig Pos"));
+    _go_trig_button.setToolTip(L_S(STR_PAGE_TOOLBAR, S_ID(IDS_TOOLBAR_GO_TRIG_TIP),
+                                   "Center the view on the trigger position, keeping the zoom"));
+    _go_end_button.setText(L_S(STR_PAGE_TOOLBAR, S_ID(IDS_TOOLBAR_GO_END), "End"));
+    _go_end_button.setToolTip(L_S(STR_PAGE_TOOLBAR, S_ID(IDS_TOOLBAR_GO_END_TIP),
+                                  "Go to the end of the capture, keeping the zoom"));
 
     _setting_button.setText(L_S(STR_PAGE_TOOLBAR, S_ID(IDS_TOOLBAR_DISPLAY), "Display"));
     _themes->setTitle(L_S(STR_PAGE_TOOLBAR, S_ID(IDS_TOOLBAR_DISPLAY_THEMES), "Themes"));
@@ -189,6 +223,7 @@ void TrigBar::retranslateUi()
     _action_reference->setText(L_S(STR_PAGE_TOOLBAR, S_ID(IDS_TOOLBAR_FUNCTION_REFERENCE), "Reference"));
 
     _action_dispalyOptions->setText(L_S(STR_PAGE_TOOLBAR, S_ID(IDS_TOOLBAR_DISPLAY_OPTIONS), "Options"));
+    _action_vfit->setText(L_S(STR_PAGE_TOOLBAR, S_ID(IDS_TOOLBAR_FIT_VERTICAL_TIP), "Shrink all channels to fit the window"));
 }
 
 void TrigBar::reStyle()
@@ -202,6 +237,10 @@ void TrigBar::reStyle()
     _function_button.setIcon(QIcon(iconPath+"/function.svg"));
     _setting_button.setIcon(QIcon(iconPath+"/display.svg"));
     _dso_split_button.setIcon(QIcon(iconPath+"/dso-split.svg"));
+    _vfit_button.setIcon(QIcon(iconPath+"/vfit.svg"));
+    _go_begin_button.setIcon(QIcon(iconPath+"/go-begin.svg"));
+    _go_trig_button.setIcon(QIcon(iconPath+"/go-trigger.svg"));
+    _go_end_button.setIcon(QIcon(iconPath+"/go-end.svg"));
 
     _action_fft->setIcon(QIcon(iconPath+"/fft.svg"));
     _action_math->setIcon(QIcon(iconPath+"/math.svg"));
@@ -217,6 +256,7 @@ void TrigBar::reStyle()
     _frappe_style->setIcon(QIcon(iconPath+"/dark.svg"));
 
     _action_dispalyOptions->setIcon(QIcon(iconPath+"/gear.svg"));
+    _action_vfit->setIcon(QIcon(iconPath+"/vfit.svg"));
 
      AppConfig &app = AppConfig::Instance();
      // The Themes menu's own icon: fall back to the dark/light glyph for
@@ -286,6 +326,11 @@ void TrigBar::dso_split_clicked()
     }
 }
 
+void TrigBar::vfit_clicked()
+{
+    sig_fit_vertical();
+}
+
 void TrigBar::reload()
 { 
     int mode = _session->get_device()->get_work_mode();
@@ -299,6 +344,11 @@ void TrigBar::reload()
         _action_lissajous->setVisible(false);
         _action_dispalyOptions->setVisible(true);
         _dso_split_action->setVisible(false);
+        _vfit_action->setVisible(true);
+        _action_vfit->setVisible(true);
+        _go_begin_action->setVisible(true);
+        _go_trig_action->setVisible(true);
+        _go_end_action->setVisible(true);
 
     } else if (mode == ANALOG) {
         _trig_action->setVisible(false);
@@ -309,6 +359,11 @@ void TrigBar::reload()
         _action_lissajous->setVisible(false);
         _action_dispalyOptions->setVisible(true);
         _dso_split_action->setVisible(false);
+        _vfit_action->setVisible(false);
+        _action_vfit->setVisible(false);
+        _go_begin_action->setVisible(false);
+        _go_trig_action->setVisible(false);
+        _go_end_action->setVisible(false);
 
     } else if (mode == DSO) {
         _trig_action->setVisible(true);
@@ -320,6 +375,11 @@ void TrigBar::reload()
         _action_dispalyOptions->setVisible(true);
         _dso_split_action->setVisible(true);
         _dso_split_button.setChecked(AppConfig::Instance().appOptions.dsoSplitChannels);
+        _vfit_action->setVisible(false);
+        _action_vfit->setVisible(false);
+        _go_begin_action->setVisible(false);
+        _go_trig_action->setVisible(false);
+        _go_end_action->setVisible(false);
     }
 
     DockOptions *opt = getDockOptions();

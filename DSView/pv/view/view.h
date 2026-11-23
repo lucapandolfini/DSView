@@ -34,7 +34,6 @@
 #include <QDateTime>
 #include <QSplitter>
 #include <QVBoxLayout>
-#include <QTimer>
 
  
 #include "../toolbars/samplingbar.h"
@@ -95,6 +94,12 @@ public:
 	// logic channel divider line is disabled (see AppConfig::logicChannelDivider).
 	static int get_signal_margin();
 
+    /**
+     * Whether trace text (channel names, decoder labels and annotations) is
+     * drawn: below MinReadableFontSize it is hidden instead.
+     */
+    bool trace_text_shown();
+
 	static const QColor CursorAreaColour;
 	static const QSizeF LabelPadding;
     static const QString Unknown_Str;
@@ -103,14 +108,16 @@ public:
     static constexpr double MaxViewRate = 1.0;
 
     // Bounds for the vertical (trace height) scaling factor.
-    static constexpr double MinTraceHeightFactor = 0.5;
+    static constexpr double MinTraceHeightFactor = 0.15;
+    // Below normal size rows shrink with the zoom, down to this height.
+    static const int MinRowHeight = 4;
+    // Trace text smaller than this (points) is hidden rather than drawn.
+    static constexpr double MinReadableFontSize = 6.0;
     static constexpr double MaxTraceHeightFactor = 20.0;
     static const int MaxPixelsPerSample = 100;
 
     static const int StatusHeight = 20;
     static const int DsoStatusHeight = 55;
-    // Pause after the last small scroll step before snapping to a channel.
-    static const int VSnapIdleMs = 200;
 
     static const int ForeAlpha = 255;
     static const int BackAlpha = 100;
@@ -127,16 +134,6 @@ public:
     explicit View(SigSession *session, pv::toolbars::SamplingBar *sampling_bar, QWidget *parent = 0);
 
     ~View();
-
-    // Scroll the time pane vertically by a wheel or touchpad delta. With
-    // channel snapping on (logic mode), a step of at least a channel's height
-    // lands on the next channel in its direction right away; smaller steps
-    // scroll freely and snap once the scrolling has stopped.
-    void scroll_v_by_wheel(int delta);
-    // Snap the vertical scroll position to the nearest channel now, e.g. when
-    // a scroll bar or middle-button drag ends. Does nothing unless channel
-    // snapping applies.
-    void snap_v_scroll();
 
 	inline SigSession& session(){
         return *_session;
@@ -206,6 +203,7 @@ public:
      * and persisted. Passing 1.0 resets the y-axis zoom to its default.
      */
     void set_trace_height_factor(double factor);
+    void apply_trace_height_factor(double factor);
 
 	/**
 	 * Sets the scale and offset.
@@ -251,6 +249,21 @@ public:
     void set_dso_split_channels(bool split);
 
     /**
+     * Logic mode: shrinks the vertical zoom (never above normal size) until
+     * all enabled traces fit the time pane without vertical scrolling.
+     */
+    void fit_traces_vertically();
+
+    /**
+     * Logic mode: scroll the view, keeping the zoom, so that the first sample
+     * is at the left edge, the trigger position (the 0 of the time ruler) is
+     * in the middle, or the last captured sample is at the right edge.
+     */
+    void scroll_to_begin();
+    void scroll_to_trigger();
+    void scroll_to_end();
+
+    /**
      * Scale applied to trace-area text so it grows together with the trace
      * height. Returns the vertical scaling factor in logic mode and 1.0 in
      * every other mode (where trace height is not scaled).
@@ -278,6 +291,20 @@ public:
     }
 
 	void normalize_layout();
+
+    /**
+     * Bottom edge of the band at the top of the time pane that holds the
+     * pinned decoders, or 0 when none is pinned. The band does not scroll.
+     */
+    int pinned_band_bottom();
+
+    /**
+     * Whether trace t is hidden at height y: unpinned traces that scroll
+     * into the pinned band are covered by it.
+     */
+    bool trace_covered(Trace *t, int y);
+
+    void set_trace_pinned(Trace *t, bool pinned);
 
     void show_trig_cursor(bool show = true);
 
@@ -427,14 +454,10 @@ private:
     // of the status bar. LOGIC only - in DSO get_view_height() already
     // reports the (overlap-free) grid height, so this would subtract twice.
     int get_time_pane_height();
-    // Nearest vertical scroll position at which the top edge of the time
-    // pane lines up with the start of a trace band, so the topmost trace is
-    // never shown sliced. The end of the scroll range is always a stop.
-    // With from >= 0, the result never falls back to or behind from, so a
-    // step always reaches the next stop in its direction.
-    int snap_v_offset(int value, int from = -1);
-    bool v_snap_enabled();
-    void restore_v_scroll(int old_value, int old_content);
+    // Nearest vertical scroll position at which the bottom edge of the time
+    // pane lines up with the end of a trace band, so nothing overlapping the
+    // bottom of the pane can slice the lowest trace in half.
+    int snap_v_offset(int value);
     void update_margins();
     // Re-reserves bottom/right space in _statusLayout for the real
     // scrollbars, using their current (not construction-time) geometry -
@@ -557,14 +580,14 @@ private:
     int         _spanY;
     int         _signalHeight;
     double      _trace_height_factor;
+    double      _text_scale;     // trace text size below normal row height
 
     // Collects sub-detent wheel steps so high-resolution wheels can still
     // advance the (discrete) DSO horizontal knob.
     WheelAccumulator _dso_zoom_accum{1.0};
     bool        _dso_split_channels;
     bool        _updating_scroll;
-    // Snaps the vertical scroll position once small scroll steps stop.
-    QTimer      _v_snap_timer;
+    bool        _snapping_v_scroll;
 
     // trigger position fix
     double      _trig_hoff;

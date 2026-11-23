@@ -54,6 +54,10 @@
 #include "../config/appconfig.h"
 #include "../log.h"
 
+#include <algorithm>
+#include <set>
+#include <cstring>
+
 using namespace boost;
 using namespace std;
  
@@ -192,6 +196,11 @@ DecodeTrace::~DecodeTrace()
 
 void DecodeTrace::generate_annotation_colours(QColor baseColour, int local_row,
     const pv::data::decode::Annotation &a, QColor *res_fill, QColor *res_outline) {
+    generate_annotation_colours(baseColour, local_row, a.type(), res_fill, res_outline);
+}
+
+void DecodeTrace::generate_annotation_colours(QColor baseColour, int local_row,
+    int ann_type, QColor *res_fill, QColor *res_outline) {
     *res_fill = baseColour; 
 
     /* vary the color based on the trace color setting.
@@ -201,23 +210,58 @@ void DecodeTrace::generate_annotation_colours(QColor baseColour, int local_row,
     int lightness_offset;
     int hue_offset;
 
-    hue_offset = static_cast<int>(15.0 * (local_row ? 4 : 1) * ((a.type() % 3) - 1));
-    lightness_offset = 10 * (local_row % 6) * ((a.type() % 3) - 1);
+    hue_offset = static_cast<int>(15.0 * (local_row ? 4 : 1) * ((ann_type % 3) - 1));
+    lightness_offset = 10 * (local_row % 6) * ((ann_type % 3) - 1);
 
     res_fill->getHsl(&ch, &cs, &cl);
     ch = (360 + ((ch + hue_offset) % 360)) % 360;
     cl = max(0, min(255, (cl + lightness_offset)));
     res_fill->setHsl(ch, cs, cl);
 
-    *res_outline = *res_fill;
-    int luma = compute_colour_luminance(*res_fill);
+    *res_outline = outline_colour(*res_fill);
+}
 
-    if(luma > 128) lightness_offset = -128;
-    else lightness_offset = 80;
+QColor DecodeTrace::outline_colour(const QColor &fill)
+{
+    int ch, cs, cl;
+    QColor outline = fill;
+    const int luma = compute_colour_luminance(fill);
+    const int lightness_offset = (luma > 128) ? -128 : 80;
 
-    res_outline->getHsl(&ch, &cs, &cl);
+    outline.getHsl(&ch, &cs, &cl);
     cl = max(0, min(255, (cl + lightness_offset)));
-    res_outline->setHsl(ch, cs, cl);
+    outline.setHsl(ch, cs, cl);
+    return outline;
+}
+
+bool DecodeTrace::decoder_annotation_colour(const srd_decoder *dec,
+    int ann_class, QColor &colour)
+{
+    if (dec == NULL)
+        return false;
+
+    for (const GSList *l = dec->annotation_colours; l; l = l->next) {
+        auto ac = (const struct srd_decoder_annotation_colour *)l->data;
+        if (ac->ann_class == ann_class) {
+            colour = QColor(QString::fromUtf8(ac->colour));
+            return colour.isValid();
+        }
+    }
+    return false;
+}
+
+void DecodeTrace::annotation_colours(const srd_decoder *dec, int ann_class,
+    int ann_type, int local_row, QColor *fill, QColor *outline)
+{
+    // A colour the user picked for the trace wins over the decoder's own.
+    if (!_colour.isValid() && decoder_annotation_colour(dec, ann_class, *fill)) {
+        *outline = outline_colour(*fill);
+        return;
+    }
+
+    const QColor fill_base = _colour.isValid() ? _colour :
+        get_row_base_colour(local_row);
+    generate_annotation_colours(fill_base, local_row, ann_type, fill, outline);
 }
 
 bool DecodeTrace::enabled()
@@ -264,32 +308,6 @@ void DecodeTrace::paint_back(QPainter &p, int left, int right, QColor fore, QCol
     };
     p.drawPolygon(start_points, countof(start_points));
     p.drawPolygon(end_points, countof(end_points));
-
-    // --draw headings
-    const int row_height = _view->get_signalHeight();
-    for (size_t i = 0; i < _cur_row_headings.size(); i++)
-    {
-        const int y = i * row_height + get_y() - _totalHeight * 0.5;
-
-        p.setPen(QPen(Qt::NoPen));
-        p.setBrush(QApplication::palette().brush(QPalette::WindowText));
-
-        const QRect r(left + ArrowSize * 2, y,
-            right - left, row_height / 2);
-        const QString h(_cur_row_headings[i]);
-        const int f = Qt::AlignLeft | Qt::AlignVCenter |
-            Qt::TextDontClip;
-        const QPointF points[] = {
-            QPointF(left, r.center().y() - ArrowSize),
-            QPointF(left + ArrowSize, r.center().y()),
-            QPointF(left, r.center().y() + ArrowSize)
-        };
-        p.drawPolygon(points, countof(points));
-
-        // Draw the text
-        p.setPen(fore);
-        p.drawText(r, f, h);
-    }
 }
 
 void DecodeTrace::paint_mid(QPainter &p, int left, int right, QColor fore, QColor back)
@@ -374,12 +392,12 @@ void DecodeTrace::paint_mid(QPainter &p, int left, int right, QColor fore, QColo
                                     merge_pixels, merge_instants)) {
                                 for (const AnnotationSpan &span : spans) {
                                     if (span.last == NULL)
-                                        draw_annotation(*span.ann, p,
+                                        draw_annotation(*span.ann, row.decoder(), p,
                                             annotation_height, left, right,
                                             samples_per_pixel, pixels_offset, y,
                                             local_row, min_annWidth, fore, back, last_x);
                                     else
-                                        draw_annotation_run(*span.ann, *span.last, p,
+                                        draw_annotation_run(*span.ann, *span.last, row.decoder(), p,
                                             annotation_height, left, right,
                                             samples_per_pixel, pixels_offset, y,
                                             local_row, min_annWidth);
@@ -392,7 +410,7 @@ void DecodeTrace::paint_mid(QPainter &p, int left, int right, QColor fore, QColo
                                     start_sample, end_sample);
 
                                 for(Annotation *a : annotations){
-                                    draw_annotation(*a, p,
+                                    draw_annotation(*a, row.decoder(), p,
                                         annotation_height, left, right,
                                         samples_per_pixel, pixels_offset, y,
                                         local_row, min_annWidth, fore, back, last_x);
@@ -416,19 +434,154 @@ void DecodeTrace::paint_mid(QPainter &p, int left, int right, QColor fore, QColo
     }
 }
 
+bool DecodeTrace::get_annotation_at(const QPoint &pt, QStringList &texts, QString &row_title)
+{
+    using namespace pv::data::decode;
+
+    // How far from an annotation, in pixels, a click still hits it.
+    const double HitMargin = 3;
+    // Ranges narrower than this are covered by their neighbours on screen.
+    const double MinVisibleWidth = 4;
+
+    assert(_decoder_stack);
+    assert(_view);
+
+    double samplerate = _decoder_stack->samplerate();
+    if (samplerate == 0.0)
+        samplerate = 1.0;
+
+    const double samples_per_pixel = samplerate * _view->scale();
+    const int64_t pixels_offset = _view->x_offset();
+    const int annotation_height = _view->get_signalHeight();
+
+    // Same row layout as paint_mid().
+    int y = get_y() - (_totalHeight - annotation_height) * 0.5;
+
+    for (auto dec : _decoder_stack->stack()) {
+        if (!dec->shown()) {
+            y += annotation_height;
+            continue;
+        }
+
+        const std::map<const Row, bool> rows = _decoder_stack->get_rows_gshow();
+        for (auto i = rows.begin(); i != rows.end(); i++) {
+            if ((*i).first.decoder() != dec->decoder() ||
+                !_decoder_stack->has_annotations((*i).first) || !(*i).second)
+                continue;
+
+            const Row &row = (*i).first;
+            const int top = y - annotation_height / 2;
+            y += annotation_height;
+
+            if (pt.y() < top || pt.y() >= top + annotation_height)
+                continue;
+
+            // An instant is drawn about one row height wide.
+            const double margin = std::max(HitMargin, annotation_height / 2.0);
+            const double from = std::max((pt.x() - margin + pixels_offset) * samples_per_pixel, 0.0);
+            const double to = std::max((pt.x() + margin + pixels_offset) * samples_per_pixel, 0.0);
+
+            std::vector<Annotation*> annotations;
+            _decoder_stack->get_annotation_subset(annotations, row,
+                                                  (uint64_t)from, (uint64_t)ceil(to));
+
+            // Take the closest annotation. Slivers too narrow to see (such
+            // as UART start bits when zoomed out) lose to a visible
+            // neighbour within reach; of several under the mouse, take the
+            // widest, which is the one drawn on top.
+            const Annotation *best = NULL;
+            double best_dist = 0;
+            double best_width = 0;
+
+            for (const Annotation *a : annotations) {
+                const double start = a->start_sample() / samples_per_pixel - pixels_offset;
+                const double end = a->end_sample() / samples_per_pixel - pixels_offset;
+                double dist = 0;
+                if (pt.x() < start)
+                    dist = start - pt.x();
+                else if (pt.x() > end)
+                    dist = pt.x() - end;
+
+                const double limit = (a->start_sample() == a->end_sample()) ? margin : HitMargin;
+                if (dist > limit)
+                    continue;
+
+                const double width = end - start;
+                if (a->start_sample() != a->end_sample() && width < MinVisibleWidth)
+                    dist += HitMargin + 1;
+
+                if (best == NULL || dist < best_dist ||
+                    (dist == best_dist && width >= best_width)) {
+                    best = a;
+                    best_dist = dist;
+                    best_width = width;
+                }
+            }
+
+            if (best == NULL || best->annotations().empty())
+                return false;
+
+            texts.clear();
+            for (const QString &s : best->annotations())
+                texts.push_back(s);
+            row_title = row.title();
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void DecodeTrace::paint_fore(QPainter &p, int left, int right, QColor fore, QColor back)
 {
 	using namespace pv::data::decode;
 
-    (void)p;
-    (void)left;
-	(void)right;
-    (void)fore;
-    (void)back;
+    // Row headings go on top of the decoded data (they used to be drawn
+    // under it, in paint_back, and were unreadable where data was).
+    // Too small to read, they are left out rather than overlapping.
+    if (!_view->trace_text_shown())
+        return;
+    p.save();
+    // --draw headings
+    const int row_height = _view->get_signalHeight();
+    for (size_t i = 0; i < _cur_row_headings.size(); i++)
+    {
+        const int y = i * row_height + get_y() - _totalHeight * 0.5;
+
+        p.setPen(QPen(Qt::NoPen));
+        p.setBrush(QApplication::palette().brush(QPalette::WindowText));
+
+        const QRect r(left + ArrowSize * 2, y,
+            right - left, row_height / 2);
+        const QString h(_cur_row_headings[i]);
+        const int f = Qt::AlignLeft | Qt::AlignVCenter |
+            Qt::TextDontClip;
+        const QPointF points[] = {
+            QPointF(left, r.center().y() - ArrowSize),
+            QPointF(left + ArrowSize, r.center().y()),
+            QPointF(left, r.center().y() + ArrowSize)
+        };
+        p.drawPolygon(points, countof(points));
+
+        // A see-through backing box keeps the row name readable over the
+        // decoded data, while the data still shows through a little.
+        const QRect text_rect = p.fontMetrics().boundingRect(r, f, h);
+        QColor box_colour(back);
+        box_colour.setAlpha(170);
+        p.save();
+        p.setBrush(box_colour);
+        p.drawRoundedRect(QRectF(text_rect).adjusted(-3, -1, 3, 1), 3, 3);
+        p.restore();
+
+        // Draw the text
+        p.setPen(fore);
+        p.drawText(r, f, h);
+    }
+    p.restore();
 }
  
 void DecodeTrace::draw_annotation(const pv::data::decode::Annotation &a,
-    QPainter &p, int h, int left, int right,
+    const srd_decoder *dec, QPainter &p, int h, int left, int right,
     double samples_per_pixel, double pixels_offset, int y,
     int local_row, double min_annWidth, QColor fore, QColor back, double &last_x)
 {
@@ -447,10 +600,8 @@ void DecodeTrace::draw_annotation(const pv::data::decode::Annotation &a,
     
     last_x = end;
 
-    const QColor fill_base = _colour.isValid() ? _colour :
-        get_row_base_colour(local_row);
     QColor fill, outline;
-    generate_annotation_colours(fill_base, local_row, a, &fill, &outline);
+    annotation_colours(dec, a.format(), a.type(), local_row, &fill, &outline);
     const QColor &text_color = get_text_colour(fill);
 
     if (_decoder_stack->get_mark_index() == (int64_t)(a.start_sample()+ a.end_sample())/2) {
@@ -496,7 +647,7 @@ void DecodeTrace::draw_annotation(const pv::data::decode::Annotation &a,
 }
 
 void DecodeTrace::draw_annotation_run(const pv::data::decode::Annotation &a,
-    const pv::data::decode::Annotation &last,
+    const pv::data::decode::Annotation &last, const srd_decoder *dec,
     QPainter &p, int h, int left, int right,
     double samples_per_pixel, double pixels_offset, int y,
     int local_row, double min_annWidth)
@@ -514,10 +665,8 @@ void DecodeTrace::draw_annotation_run(const pv::data::decode::Annotation &a,
     if (start > right + DrawPadding || end < left - DrawPadding)
         return;
 
-    const QColor fill_base = _colour.isValid() ? _colour :
-        get_row_base_colour(local_row);
     QColor fill, outline;
-    generate_annotation_colours(fill_base, local_row, a, &fill, &outline);
+    annotation_colours(dec, a.format(), a.type(), local_row, &fill, &outline);
 
     const double width = max(end - start, 1.0);
 
@@ -561,6 +710,13 @@ void DecodeTrace::draw_nodetail(QPainter &p,
     (void)back;
 
     const QRectF nodetail_rect(left, y - h/2 + 0.5, right - left, h);
+
+    if (!_view->trace_text_shown()) {
+        p.setPen(fore);
+        p.drawLine(left, y, right, y);
+        return;
+    }
+
     QString info = L_S(STR_PAGE_DLG, S_ID(ZOOM_IN_FOR_DETAILS), "Zoom in for details");
     int info_left = nodetail_rect.center().x() - p.boundingRect(QRectF(), 0, info).width();
     int info_right = nodetail_rect.center().x() + p.boundingRect(QRectF(), 0, info).width();
@@ -595,6 +751,8 @@ void DecodeTrace::draw_instant(const pv::data::decode::Annotation &a, QPainter &
 	p.setBrush(fill);
 	p.drawRoundedRect(rect, h / 2, h / 2);
 
+	if (!_view->trace_text_shown())
+		return;
 	p.setPen(text_color);
 	p.drawText(rect, Qt::AlignCenter | Qt::AlignVCenter, text);
 }
@@ -636,7 +794,7 @@ void DecodeTrace::draw_range(const pv::data::decode::Annotation &a, QPainter &p,
 
     p.drawConvexPolygon(pts, countof(pts));
 
-	if (annotations.empty())
+	if (annotations.empty() || !_view->trace_text_shown())
 		return;
 
     // Allow printing inside the caps a little
@@ -686,17 +844,21 @@ void DecodeTrace::draw_range(const pv::data::decode::Annotation &a, QPainter &p,
     dsv_detail("Allowed width: %d", max_width);
     int flags = Qt::AlignCenter;
     if (best_annotation.isEmpty()) {
-        // no fitting annotation found, use the last one with maximum condensing
-        // also alpha blend the right end of the text to indicate truncation
-        QLinearGradient gradient(rect.right() - (rect.width() / 5), rect.top(),
-            rect.right(), rect.top());
-        gradient.setColorAt(0.0, text_color);
-        gradient.setColorAt(1.0, QColor(text_color.red(), text_color.green(), text_color.blue(), 0));
-        p.setPen(QPen(QBrush(gradient), 1));
-		best_annotation = annotations.back();
+        // Nothing fits, even condensed. Cutting the text off would show a
+        // different value ("6" for "6F"), so shorten the shortest form with
+        // an ellipsis instead ("6…", or only "…"). The full text is in the
+        // tooltip and the right-click menu.
         condensed_font.setStretch(MIN_STRETCH);
-        dsv_detail("[CLIP] Width after stretch: %d", p.boundingRect(QRect(), 0, best_annotation).width());
-        flags = Qt::AlignLeft | Qt::AlignVCenter;
+        const QFontMetrics condensed_fm(condensed_font);
+        const QString ellipsis(QChar(0x2026));
+        if (condensed_fm.boundingRect(ellipsis).width() > max_width) {
+            p.restore();
+            return;
+        }
+        best_annotation = condensed_fm.elidedText(annotations.back(), Qt::ElideRight, max_width);
+        if (best_annotation.isEmpty())
+            best_annotation = ellipsis;
+        dsv_detail("[CLIP] Elided to: %s", best_annotation.toUtf8().constData());
     }
 
     p.setFont(condensed_font);
@@ -727,6 +889,13 @@ void DecodeTrace::draw_unshown_row(QPainter &p, int y, int h, int left,
     (void)back;
 
     const QRectF unshown_rect(left, y - h/2 + 0.5, right - left, h);
+
+    if (!_view->trace_text_shown()) {
+        p.setPen(fore);
+        p.drawLine(left, y, right, y);
+        return;
+    }
+
     int info_left = unshown_rect.center().x() - p.boundingRect(QRectF(), 0, info).width();
     int info_right = unshown_rect.center().x() + p.boundingRect(QRectF(), 0, info).width();
     int height = p.boundingRect(QRectF(), 0, info).height();
@@ -789,43 +958,166 @@ int DecodeTrace::rows_size()
     return size == 0 ? 1 : size;
 }
 
+QString DecodeTrace::channel_index_text()
+{
+    std::vector<int> indexes(_index_list.begin(), _index_list.end());
+    std::sort(indexes.begin(), indexes.end());
+    indexes.erase(std::unique(indexes.begin(), indexes.end()), indexes.end());
+
+    // Runs of consecutive channels as "high-low", highest first.
+    QStringList parts;
+    size_t i = indexes.size();
+    while (i > 0) {
+        const int high = indexes[--i];
+        int low = high;
+        while (i > 0 && indexes[i - 1] == low - 1)
+            low = indexes[--i];
+        if (low == high)
+            parts.append(QString::number(high));
+        else
+            parts.append(QString::number(high) + "-" + QString::number(low));
+    }
+    return parts.join(",");
+}
+
 void DecodeTrace::paint_type_options(QPainter &p, int right, const QPoint pt, QColor fore)
 {
     (void)pt;
 
     int y = get_y();
     const QRectF group_index_rect = get_rect(CHNLREG, y, right);
-    QString index_string;
-    int last_index;
     p.setPen(QPen(fore, 1, Qt::DashLine));
     p.drawLine(group_index_rect.bottomLeft(), group_index_rect.bottomRight());
-    std::list<int>::iterator i = _index_list.begin();
-    last_index = (*i);
-    index_string = QString::number(last_index);
 
-    while (++i != _index_list.end()) {
-        if ((*i) == last_index + 1 && index_string.indexOf("-") < 3 && index_string.indexOf("-") > 0)
-            index_string.replace(QString::number(last_index), QString::number((*i)));
-        else if ((*i) == last_index + 1)
-            index_string = QString::number((*i)) + "-" + index_string;
-        else
-            index_string = QString::number((*i)) + "," + index_string;
-        last_index = (*i);
+    if (!_view->trace_text_shown() || _index_list.empty())
+        return;
+
+    // The channels the decoder reads. When the ranges don't fit, the
+    // channel count takes their place rather than running into the name.
+    QString index_string = channel_index_text();
+    const int avail = (int)group_index_rect.width();
+    if (p.fontMetrics().horizontalAdvance(index_string) > avail) {
+        std::set<int> unique(_index_list.begin(), _index_list.end());
+        index_string = QString::number(unique.size()) + " ch";
+        if (p.fontMetrics().horizontalAdvance(index_string) > avail)
+            return;
     }
-    
+
     p.setPen(fore);
     p.drawText(group_index_rect, Qt::AlignRight | Qt::AlignVCenter, index_string);
 }
 
+const srd_decoder* DecodeTrace::label_decoder()
+{
+    auto &stack = _decoder_stack->stack();
+    if (stack.empty())
+        return NULL;
+    return stack.back()->decoder();
+}
+
+bool DecodeTrace::has_fixed_label()
+{
+    const srd_decoder *d = label_decoder();
+    return d != NULL && d->fixed_label;
+}
+
+bool DecodeTrace::pin_on_top_default()
+{
+    for (auto dec : _decoder_stack->stack()) {
+        if (dec->decoder()->pin_on_top)
+            return true;
+    }
+    return false;
+}
+
+namespace {
+// id is prefix followed by one or more digits, e.g. "a12" for "a".
+bool channel_id_in_group(const char *id, const char *prefix)
+{
+    const size_t n = strlen(prefix);
+    if (strncmp(id, prefix, n) != 0 || id[n] == '\0')
+        return false;
+    for (const char *c = id + n; *c; c++) {
+        if (*c < '0' || *c > '9')
+            return false;
+    }
+    return true;
+}
+}
+
+bool DecodeTrace::annotation_class_colour(pv::data::decode::Decoder *dec,
+    int ann_class, QColor &colour)
+{
+    const srd_decoder *d = dec->decoder();
+    if (ann_class < 0 || ann_class >= (int)g_slist_length(d->ann_types))
+        return false;
+    const int ann_type = GPOINTER_TO_INT(g_slist_nth_data(d->ann_types, ann_class));
+
+    // The row the class is drawn in, counted the way paint_mid() counts
+    // rows; classes outside every row go to the decoder's default row.
+    int local_row = 0;
+    int found_row = -1;
+    int default_row = -1;
+    const std::map<const pv::data::decode::Row, bool> rows = _decoder_stack->get_rows_gshow();
+    for (auto i = rows.begin(); i != rows.end(); i++, local_row++) {
+        const pv::data::decode::Row &row = (*i).first;
+        if (row.decoder() != d)
+            continue;
+        if (row.row() == NULL) {
+            default_row = local_row;
+            continue;
+        }
+        for (const GSList *l = row.row()->ann_classes; l; l = l->next) {
+            if (GPOINTER_TO_INT(l->data) == ann_class) {
+                found_row = local_row;
+                break;
+            }
+        }
+        if (found_row >= 0)
+            break;
+    }
+    if (found_row < 0)
+        found_row = default_row;
+    if (found_row < 0)
+        return false;
+
+    QColor outline;
+    annotation_colours(d, ann_class, ann_type, found_row, &colour, &outline);
+    return true;
+}
+
+bool DecodeTrace::get_channel_colour(int channel_index, QColor &colour)
+{
+    for (auto dec : _decoder_stack->stack()) {
+        const srd_decoder *d = dec->decoder();
+        if (d->channel_colours == NULL)
+            continue;
+
+        for (const srd_channel *pdch : dec->binded_probe_list()) {
+            if (dec->binded_probe_index(pdch) != channel_index || pdch->id == NULL)
+                continue;
+
+            for (const GSList *l = d->channel_colours; l; l = l->next) {
+                auto cc = (const struct srd_decoder_channel_colour *)l->data;
+                if (channel_id_in_group(pdch->id, cc->prefix))
+                    return annotation_class_colour(dec, cc->ann_class, colour);
+            }
+        }
+    }
+    return false;
+}
+
 QRectF DecodeTrace::get_rect(DecodeSetRegions type, int y, int right)
 {
-    const QSizeF name_size(right - get_leftWidth() - get_rightWidth(), SquareWidth);
+    // Sized like the rest of the label, which scales with the rows.
+    const int square = get_squareWidth();
+    const QSizeF name_size(right - get_leftWidth() - get_rightWidth(), square);
 
     if (type == CHNLREG)
         return QRectF(
-            get_leftWidth() + name_size.width() + Margin,
-            y - SquareWidth / 2,
-            SquareWidth * SquareNum, SquareWidth);
+            get_leftWidth() + name_size.width() + get_squareMargin(),
+            y - square / 2,
+            square * SquareNum, square);
     else
         return QRectF(0, 0, 0, 0);
 }

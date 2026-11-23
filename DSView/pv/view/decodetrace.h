@@ -144,12 +144,42 @@ public:
 
 	bool create_popup(bool isnew);
 
+    /**
+     * Finds the annotation drawn at a point of the viewport.
+     * @param pt the point, in viewport coordinates.
+     * @param texts receives the annotation's texts, longest form first.
+     * @param row_title receives the title of the annotation's row.
+     * @return true if an annotation is at pt.
+     **/
+    bool get_annotation_at(const QPoint &pt, QStringList &texts, QString &row_title);
+
+    // The decoder whose name labels this trace: the top of the stack.
+    const srd_decoder* label_decoder();
+
+    // The decoder asks to always be labelled with its own name.
+    bool has_fixed_label();
+
+    // The decoder asks to be shown above the channels when added.
+    bool pin_on_top_default();
+
+    /**
+     * The colour the decoder gives to a logic channel bound to it, taken
+     * from the decoded data that channel feeds (e.g. the address bus row
+     * for A0-A15).
+     * @return false if the decoder gives the channel no colour.
+     **/
+    bool get_channel_colour(int channel_index, QColor &colour);
+
+    // The bound channels as compact ranges, highest first, e.g. "31,28-0".
+    QString channel_index_text();
+
 protected:
     void paint_type_options(QPainter &p, int right, const QPoint pt, QColor fore);
 
 private: 
  
-    void draw_annotation(const pv::data::decode::Annotation &a, QPainter &p,
+    void draw_annotation(const pv::data::decode::Annotation &a,
+        const srd_decoder *dec, QPainter &p,
         int text_height, int left, int right,
         double samples_per_pixel, double pixels_offset, int y,
         int local_row, double min_annWidth, QColor fore, QColor back, double &last_x);
@@ -157,7 +187,7 @@ private:
     // Draws a run of annotations too narrow to draw one by one, from a to
     // last, as one bar.
     void draw_annotation_run(const pv::data::decode::Annotation &a,
-        const pv::data::decode::Annotation &last,
+        const pv::data::decode::Annotation &last, const srd_decoder *dec,
         QPainter &p, int h, int left, int right,
         double samples_per_pixel, double pixels_offset, int y,
         int local_row, double min_annWidth);
@@ -185,6 +215,24 @@ private:
  
     void generate_annotation_colours(QColor baseColour, int local_row,
         const pv::data::decode::Annotation& a, QColor *fill, QColor *outline);
+
+    void generate_annotation_colours(QColor baseColour, int local_row,
+        int ann_type, QColor *fill, QColor *outline);
+
+    // The colours annotations of class ann_class (of type ann_type) of
+    // decoder dec are drawn in, in row local_row.
+    void annotation_colours(const srd_decoder *dec, int ann_class, int ann_type,
+        int local_row, QColor *fill, QColor *outline);
+
+    // A colour the decoder fixes for annotations of class ann_class.
+    static bool decoder_annotation_colour(const srd_decoder *dec,
+        int ann_class, QColor &colour);
+
+    QColor outline_colour(const QColor &fill);
+
+    // The fill colour annotations of class ann_class of dec are drawn in.
+    bool annotation_class_colour(pv::data::decode::Decoder *dec,
+        int ann_class, QColor &colour);
 
     static QColor get_row_base_colour(int local_row);
 

@@ -41,6 +41,11 @@
 #include <math.h>
 #include <QWheelEvent>
 #include <QScrollBar>
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QMenu>
+#include <QToolTip>
+#include <QHelpEvent>
 
 #include "../config/appconfig.h"
 #include "../dsvdef.h"
@@ -127,6 +132,7 @@ Viewport::Viewport(View &parent, View_type type) :
     connect(yAction, SIGNAL(triggered(bool)), this, SLOT(add_cursor_y()));
     connect(xAction, SIGNAL(triggered(bool)), this, SLOT(add_cursor_x()));
     connect(this, SIGNAL(customContextMenuRequested(const QPoint&)),this, SLOT(show_contextmenu(const QPoint&)));
+    connect(&_view, SIGNAL(hover_point_changed()), this, SLOT(on_hover_point_changed()));
 
     ADD_UI(this);
 }
@@ -159,6 +165,32 @@ bool Viewport::event(QEvent *event)
 {
     if (event->type() == QEvent::NativeGesture)
         return gestureEvent(static_cast<QNativeGestureEvent*>(event));
+
+    // Hovering a decoded value shows its full text, which may be shortened
+    // on screen when it doesn't fit.
+    if (event->type() == QEvent::ToolTip) {
+        QHelpEvent *help = static_cast<QHelpEvent*>(event);
+        if (_type == TIME_VIEW && _action_type == NO_ACTION &&
+            _view.session().get_device()->get_work_mode() == LOGIC) {
+            std::vector<Trace*> traces;
+            _view.get_traces(_type, traces);
+            for (auto t : traces) {
+                if (t->signal_type() != SR_CHANNEL_DECODER || !t->enabled()
+                    || _view.trace_covered(t, help->pos().y()))
+                    continue;
+                QStringList texts;
+                QString row_title;
+                if (((DecodeTrace*)t)->get_annotation_at(help->pos(), texts, row_title)) {
+                    QToolTip::showText(help->globalPos(), texts.front(), this);
+                    return true;
+                }
+            }
+        }
+        QToolTip::hideText();
+        event->ignore();
+        return true;
+    }
+
     return QWidget::event(event);
 }
 
@@ -206,15 +238,29 @@ void Viewport::doPaint()
     std::vector<Trace*> traces;
     _view.get_traces(_type, traces);
 
+    // Pinned decoders own the band at the top; other traces are clipped below it.
+    const int pinned_band = (_type == TIME_VIEW) ? _view.pinned_band_bottom() : 0;
+
     for(auto t : traces){
         if (t->signal_type() == SR_CHANNEL_LOGIC && !logic_row_in_view(t, height()))
             continue;
+        p.save();
+        clipToTraceBand(p, t, pinned_band);
         t->paint_back(p, 0, _view.get_view_width(), fore, back);
+        p.restore();
         if (_view.back_ready())
             break;
     }
 
     int mode = _view.session().get_device()->get_work_mode();
+
+    // Under the traces: channel row highlight and cursor pair bands.
+    if (_type == TIME_VIEW) {
+        if (mode == LOGIC && AppConfig::Instance().appOptions.highlightHoverRow)
+            paintHoverRow(p, fore);
+        if (AppConfig::Instance().appOptions.cursorDeltaBand)
+            paintCursorBands(p);
+    }
 
     if (mode == LOGIC || _view.session().is_instant())
     {
@@ -260,16 +306,270 @@ void Viewport::doPaint()
     }
 
     for(auto t : traces){
-        if (t->enabled())
+        if (t->enabled()) {
+            p.save();
+            clipToTraceBand(p, t, pinned_band);
             t->paint_fore(p, 0, _view.get_view_width(), fore, back);
+            p.restore();
+        }
     }
+
+    if (pinned_band > 0)
+        paintPinnedBandEdge(p, fore, pinned_band);
 
     if (_view.get_signalHeight() != _curSignalHeight)
             _curSignalHeight = _view.get_signalHeight();
 
+    if (_type == TIME_VIEW && AppConfig::Instance().appOptions.cursorDeltaBand)
+        paintCursorDeltas(p, fore, back);
+
+    if (_type == TIME_VIEW && AppConfig::Instance().appOptions.hoverLine)
+        paintHoverLine(p, fore);
+
     paintYScaleBadge(p, fore, back);
 
 	p.end();
+}
+
+void Viewport::paintHoverLine(QPainter &p, QColor fore)
+{
+    // Over the viewport follow the mouse exactly; over the ruler use the
+    // view's hover point. Over the channel header (x == 0) draw nothing.
+    int x = _mouse_point.x();
+    if (x < 0)
+        x = _view.hover_point().x();
+    if (x <= 0 || x >= width())
+        return;
+
+    fore.setAlpha(160);
+    QPen pen(fore, 1, Qt::DashLine);
+    pen.setCosmetic(true);
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, false);
+    p.setPen(pen);
+    p.drawLine(x, 0, x, height());
+    p.restore();
+}
+
+void Viewport::on_hover_point_changed()
+{
+    // Moving over the ruler or the channel header doesn't repaint the
+    // viewport by itself.
+    const AppOptions &opt = AppConfig::Instance().appOptions;
+    if (_type == TIME_VIEW && (opt.hoverLine || opt.highlightHoverRow))
+        update(UpdateEventType::UPDATE_EV_GENERIC);
+}
+
+void Viewport::paintHoverRow(QPainter &p, QColor fore)
+{
+    // Over the viewport use the mouse; over the channel header (where the
+    // view's hover point has x == 0) use the hover point. Both share y.
+    int y = -1;
+    if (_mouse_point.x() >= 0)
+        y = _mouse_point.y();
+    else if (_view.hover_point().x() == 0)
+        y = _view.hover_point().y();
+    if (y < 0 || _action_type != NO_ACTION)
+        return;
+
+    std::vector<Trace*> traces;
+    _view.get_traces(_type, traces);
+    const int margin = _view.get_signal_margin();
+
+    for (auto t : traces) {
+        if (!t->enabled() || _view.trace_covered(t, y))
+            continue;
+        const int top = t->get_y() - t->get_totalHeight() / 2 - margin;
+        const int bottom = t->get_y() + t->get_totalHeight() / 2 + margin;
+        if (y >= top && y < bottom) {
+            fore.setAlpha(22);
+            p.fillRect(QRect(0, top, width(), bottom - top), fore);
+            return;
+        }
+    }
+}
+
+// Cursors are paired by number: 1-2, 3-4, ... Each pair gets a shaded band
+// (under the traces) and a label with the time between them (on top).
+void Viewport::paintCursorBands(QPainter &p)
+{
+    if (!_view.cursors_shown())
+        return;
+
+    const bool has_hoff = _view.session().is_stopped_status();
+    auto &cursor_list = _view.get_cursorList();
+    auto i = cursor_list.begin();
+
+    while (i != cursor_list.end()) {
+        Cursor *c1 = *i++;
+        if (i == cursor_list.end())
+            break;
+        Cursor *c2 = *i++;
+
+        double x1 = _view.index2pixel(c1->index(), has_hoff);
+        double x2 = _view.index2pixel(c2->index(), has_hoff);
+        if (x1 > x2)
+            std::swap(x1, x2);
+        if (x2 < 0 || x1 > width())
+            continue;
+
+        QColor colour = Ruler::GetColorByCursorOrder(c1->order());
+        colour.setAlpha(36);
+        p.fillRect(QRectF(x1, 0, x2 - x1, height()), colour);
+    }
+}
+
+void Viewport::paintCursorDeltas(QPainter &p, QColor fore, QColor back)
+{
+    if (!_view.cursors_shown())
+        return;
+
+    const uint64_t samplerate = _view.session().cur_snap_samplerate();
+    if (samplerate == 0)
+        return;
+
+    const bool has_hoff = _view.session().is_stopped_status();
+    auto &cursor_list = _view.get_cursorList();
+    auto i = cursor_list.begin();
+
+    p.save();
+    QFont font = p.font();
+    font.setStretch(QFont::Unstretched);
+    p.setFont(font);
+    const QFontMetrics fm = p.fontMetrics();
+
+    while (i != cursor_list.end()) {
+        Cursor *c1 = *i++;
+        if (i == cursor_list.end())
+            break;
+        Cursor *c2 = *i++;
+
+        const uint64_t i1 = c1->index();
+        const uint64_t i2 = c2->index();
+        const int64_t delta = (i2 > i1) ? (int64_t)(i2 - i1) : (int64_t)(i1 - i2);
+        if (delta == 0)
+            continue;
+
+        double x1 = _view.index2pixel(i1, has_hoff);
+        double x2 = _view.index2pixel(i2, has_hoff);
+        if (x1 > x2)
+            std::swap(x1, x2);
+        if (x2 < 0 || x1 > width())
+            continue;
+
+        QString time = Ruler::format_real_time(delta, samplerate);
+        if (time.startsWith('+'))
+            time.remove(0, 1);
+        const QString text = QString("%1-%2: %3t %4  (%5)")
+                                 .arg(c1->order()).arg(c2->order())
+                                 .arg(QChar(0x0394)) // Greek capital delta
+                                 .arg(time)
+                                 .arg(Ruler::format_real_freq(delta, samplerate));
+
+        const int text_w = fm.boundingRect(text).width();
+        const int box_w = text_w + 12;
+        const int box_h = fm.height() + 4;
+        double left = (x1 + x2) / 2 - box_w / 2.0;
+        left = std::max(2.0, std::min(left, (double)width() - box_w - 2));
+        const QRectF box(left, 3, box_w, box_h);
+
+        QColor edge = Ruler::GetColorByCursorOrder(c1->order());
+        edge.setAlpha(255);
+        QColor fill(back);
+        fill.setAlpha(225);
+        fore.setAlpha(255);
+
+        p.setPen(QPen(edge, 1));
+        p.setBrush(fill);
+        p.drawRoundedRect(box, 4, 4);
+        p.setPen(fore);
+        p.drawText(box, Qt::AlignCenter, text);
+    }
+    p.restore();
+}
+
+void Viewport::clipToTraceBand(QPainter &p, Trace *t, int band)
+{
+    if (band <= 0)
+        return;
+    if (t->pinned())
+        p.setClipRect(0, 0, width(), band);
+    else
+        p.setClipRect(0, band, width(), max(height() - band, 0));
+}
+
+// A line under the pinned decoders; once the rest is scrolled, a soft
+// shadow shows that traces pass underneath.
+void Viewport::paintPinnedBandEdge(QPainter &p, QColor fore, int band)
+{
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, false);
+    if (_view.y_offset() > 0) {
+        QLinearGradient shadow(0, band, 0, band + 6);
+        shadow.setColorAt(0, QColor(0, 0, 0, 90));
+        shadow.setColorAt(1, QColor(0, 0, 0, 0));
+        p.fillRect(QRect(0, band, width(), 6), shadow);
+    }
+    fore.setAlpha(150);
+    p.setPen(QPen(fore, 1));
+    p.drawLine(0, band - 1, width(), band - 1);
+    p.restore();
+}
+
+void Viewport::paintTriggerLine(QPainter &p, const QRect &rect)
+{
+    Cursor *trig = _view.get_trig_cursor();
+    const double x = _view.index2pixel(trig->index(), false);
+    if (x < 0 || x > rect.right())
+        return;
+
+    p.save();
+    // A solid line, with a small flag at the top, stands out from the
+    // dashed cursor and guide lines.
+    QPen pen(View::Red, 1.5);
+    pen.setCosmetic(true);
+    p.setPen(pen);
+    p.drawLine(QPointF(x, 0), QPointF(x, rect.bottom()));
+
+    const QPointF flag[] = {
+        QPointF(x - 5, 0), QPointF(x + 5, 0), QPointF(x, 6)
+    };
+    p.setPen(Qt::NoPen);
+    p.setBrush(View::Red);
+    p.drawPolygon(flag, 3);
+    p.restore();
+}
+
+bool Viewport::show_annotation_menu(const QPoint &pos)
+{
+    std::vector<Trace*> traces;
+    _view.get_traces(_type, traces);
+
+    for (auto t : traces) {
+        if (t->signal_type() != SR_CHANNEL_DECODER || !t->enabled()
+            || _view.trace_covered(t, pos.y()))
+            continue;
+
+        QStringList texts;
+        QString row_title;
+        if (!((DecodeTrace*)t)->get_annotation_at(pos, texts, row_title))
+            continue;
+
+        QMenu menu(this);
+        QAction *copyAction = menu.addAction(
+            L_S(STR_PAGE_DLG, S_ID(IDS_DLG_COPY_ANNOTATION), "Copy annotation text"));
+        QAction *copyRowAction = menu.addAction(
+            L_S(STR_PAGE_DLG, S_ID(IDS_DLG_COPY_ANNOTATION_WITH_ROW), "Copy with row name"));
+
+        QAction *chosen = menu.exec(QCursor::pos());
+        if (chosen == copyAction)
+            QGuiApplication::clipboard()->setText(texts.front());
+        else if (chosen == copyRowAction)
+            QGuiApplication::clipboard()->setText(row_title + ": " + texts.front());
+        return true;
+    }
+    return false;
 }
 
 void Viewport::paintCursors(QPainter &p)
@@ -396,6 +696,7 @@ void Viewport::paintSignals(QPainter &p, QColor fore, QColor back)
     {
         bool bFirst = true;
         uint64_t end_align_sample;
+        const int pinned_band = (_type == TIME_VIEW) ? _view.pinned_band_bottom() : 0;
 
         for(auto t : traces){
             if (t->enabled()){
@@ -412,10 +713,16 @@ void Viewport::paintSignals(QPainter &p, QColor fore, QColor back)
                     if (!logic_row_in_view(t, height()))
                         continue;
 
+                    p.save();
+                    clipToTraceBand(p, t, pinned_band);
                     logic_signal->paint_mid_align_sample(p, 0, t->get_view_rect().right(), fore, back, end_align_sample);
+                    p.restore();
                 }
                 else{
+                    p.save();
+                    clipToTraceBand(p, t, pinned_band);
                     t->paint_mid(p, 0, t->get_view_rect().right(), fore, back);
+                    p.restore();
                 }
             }
         }
@@ -581,7 +888,10 @@ void Viewport::paintSignals(QPainter &p, QColor fore, QColor back)
 
     if (_type == TIME_VIEW) {
         if (_view.trig_cursor_shown()) {
-            _view.get_trig_cursor()->paint(p, xrect, 0, false);
+            if (AppConfig::Instance().appOptions.triggerLine)
+                paintTriggerLine(p, xrect);
+            else
+                _view.get_trig_cursor()->paint(p, xrect, 0, false);
         }
         if (_view.search_cursor_shown()) {
             const int64_t searchX = _view.index2pixel(_view.get_search_cursor()->index());
@@ -668,7 +978,7 @@ void Viewport::paintSignals(QPainter &p, QColor fore, QColor back)
             if (_view.session().get_device()->is_hardware())
             {
                 if (_view.session().dso_data_is_out_off_range()){
-                    QString data_status = L_S(STR_PAGE_DLG, S_ID(IDS_DLG_DATA_OUT_OFF_RANGE), "Out off range");
+                    QString data_status = L_S(STR_PAGE_DLG, S_ID(IDS_DLG_DATA_OUT_OFF_RANGE), "Data out of range");
                     data_status += "! ";
                     p.setPen(QColor(255,0,0,200));
                     p.drawText(_view.get_view_rect(), Qt::AlignRight | Qt::AlignTop, data_status);
@@ -1438,7 +1748,15 @@ void Viewport::onLogicMouseRelease(QMouseEvent *event)
         }
         case LOGIC_ZOOM:
         {
-            if (event->pos().x() != _mouse_down_point.x()) {
+            const int drag = abs(event->pos().x() - _mouse_down_point.x());
+            if (drag <= ClickMaxDrag) {
+                // A right click, not a zoom: offer to copy the annotation under the mouse.
+                set_action(NO_ACTION);
+                if (event->button() == Qt::RightButton)
+                    show_annotation_menu(event->pos());
+                break;
+            }
+            {
                 int64_t newOffset = _view.x_offset() + (min(event->pos().x(), _mouse_down_point.x()));
                 const double newScale = max(min(_view.scale() * abs(event->pos().x() - _mouse_down_point.x()) / _view.get_view_width(),
                                                 _view.get_maxscale()), _view.get_minscale());
@@ -1569,11 +1887,6 @@ void Viewport::mouseReleaseEvent(QMouseEvent *event)
         update(UpdateEventType::UPDATE_EV_MS_UP);
         return;
     }
-
-    // A middle-button drag scrolls vertically (see mouseMoveEvent); land on
-    // a channel once it ends, as a scroll bar drag does.
-    if (event->button() == Qt::MiddleButton)
-        _view.snap_v_scroll();
 
     int mode = _view.session().get_device()->get_work_mode();
 
@@ -1780,7 +2093,7 @@ void Viewport::wheelEvent(QWheelEvent *event)
             }
             // Vertical scrolling is interpreted as zooming in/out
             else if(doVScroll) {
-                _view.scroll_v_by_wheel(delta);
+                _view.verticalScrollBar()->setValue(_view.verticalScrollBar()->value() - delta);
             } else {
                 _view.zoom(zoom_scale, x);
             }
@@ -1972,6 +2285,9 @@ void Viewport::measure()
             if (s->signal_type() == SR_CHANNEL_LOGIC) {
                 view::LogicSignal *logicSig  = (view::LogicSignal*)s;
                 bool edge0;
+                // A channel scrolled under the pinned decoders is not measured.
+                if (_view.trace_covered(s, _mouse_point.y()))
+                    continue;
                 if (_action_type == NO_ACTION) {
                     if (logicSig->measure(_mouse_point, _cur_sample, _nxt_sample, _thd_sample, edge0)) {
                         _measure_type = LOGIC_FREQ;
@@ -2015,9 +2331,6 @@ void Viewport::measure()
                         _cur_aftX = _view.hover_point().x();
                         _cur_midY = logicSig->get_y();
 
-                        _em_rising = L_S(STR_PAGE_DLG, S_ID(IDS_DLG_RISING), "Rising: ") + QString::number(_edge_rising);
-                        _em_falling = L_S(STR_PAGE_DLG, S_ID(IDS_DLG_FALLING), "Falling: ") + QString::number(_edge_falling);
-                        _em_edges = L_S(STR_PAGE_DLG, S_ID(IDS_DLG_Edges_1), "Edges: ") + QString::number(_edge_rising + _edge_falling);
 
                         break;
                     }
@@ -2085,6 +2398,109 @@ void Viewport::measure()
     measure_updated();
 }
 
+// A compact table beside the mouse: label | value | extra (sample counts).
+// Scaled together with the traces/text, a little smaller than the trace font,
+// and see-through so the waveform stays visible. Used by the floating
+// measurement and by the manual ones (edge count, edge to edge).
+void Viewport::paintMeasureBalloon(QPainter &p, QColor fore, QColor back,
+                                   const std::vector<MeasureRow> &rows)
+{
+    if (rows.empty())
+        return;
+
+    p.save();
+
+    // Never smaller than normal: the traces may be zoomed out to fit.
+    const double sc = std::max(1.0, _view.get_trace_font_scale());
+
+    // Use an explicit (scaled, non-condensed) font so the popup text
+    // and its box stay consistent regardless of prior painter state.
+    QFont measure_font = p.font();
+    measure_font.setStretch(QFont::Unstretched);
+    float mfSize = AppConfig::Instance().GetTraceFontSize();
+    measure_font.setPointSizeF(mfSize * sc * 0.9);
+    p.setFont(measure_font);
+    const QFontMetrics fm = p.fontMetrics();
+
+    // Measure the (localized) labels too: translations run longer
+    // than English (e.g. German "Tastverhältnis: " for "Duty Cycle: ").
+    int label_w = 0, value_w = 0, extra_w = 0;
+    for (const MeasureRow &r : rows) {
+        label_w = max(label_w, fm.boundingRect(r.label.trimmed()).width());
+        value_w = max(value_w, fm.boundingRect(r.value).width());
+        if (!r.extra.isEmpty())
+            extra_w = max(extra_w, fm.boundingRect(r.extra.simplified()).width());
+    }
+
+    const double pad = 6.0 * sc;
+    const double gap = 10.0 * sc;
+    const double row_h = fm.height() + 2.0 * sc;
+    const int typical_width = (int)(pad * 2 + label_w + gap + value_w
+                                    + (extra_w > 0 ? gap + extra_w : 0));
+    const double box_h = pad * 2 + row_h * rows.size();
+
+    const int hoverpoint_x = _view.hover_point().x();
+    const int hoverpoint_y = _view.hover_point().y();
+    const double width = _view.get_view_width() - _view.verticalScrollBar()->geometry().width();
+    // Drawn in viewport coordinates, so clamp against this widget's
+    // own height less whatever the status bar covers. The old
+    // View::StatusHeight constant is the LOGIC height - in DSO the
+    // bar is 55px and the popup ended up behind it.
+    const double height = this->height() - _view.get_status_overlap();
+    const double left = hoverpoint_x;
+    const double top = hoverpoint_y;
+    const double right = left + typical_width;
+    const double bottom = top + box_h;
+    double hover_x, hover_y;
+    if(right > width) {
+        hover_x = left - typical_width - MouseEdgeClearance;
+    } else {
+        hover_x = left + MousePointerClearance;
+    }
+    if(bottom > height) {
+        hover_y = top - box_h - MousePointerClearance;
+        if(right <= width) {
+            hover_x = left + MouseEdgeClearance;
+        }
+    } else {
+        hover_y = top + MousePointerClearance;
+    }
+    // In a narrow view neither side of the mouse may have room:
+    // keep the box inside the view rather than cut off at an edge.
+    hover_x = std::max(0.0, std::min(hover_x, width - typical_width));
+    hover_y = std::max(0.0, std::min(hover_y, height - box_h));
+
+    const QRectF measure_rect(hover_x, hover_y, (double)typical_width, box_h);
+    QColor box_fill(back);
+    box_fill.setAlpha(215);
+    QColor box_edge(fore);
+    box_edge.setAlpha(70);
+    p.setPen(QPen(box_edge, 1));
+    p.setBrush(box_fill);
+    p.drawRoundedRect(measure_rect, 4 * sc, 4 * sc);
+
+    QColor extra_colour(fore);
+    extra_colour.setAlpha(150);
+    const double value_x = hover_x + pad + label_w + gap;
+    const double extra_x = value_x + value_w + gap;
+
+    for (size_t i = 0; i < rows.size(); i++) {
+        const double y = hover_y + pad + row_h * i;
+        p.setPen(rows[i].colour);
+        p.drawText(QRectF(hover_x + pad, y, label_w, row_h),
+                   Qt::AlignLeft | Qt::AlignVCenter, rows[i].label.trimmed());
+        p.drawText(QRectF(value_x, y, value_w, row_h),
+                   Qt::AlignRight | Qt::AlignVCenter, rows[i].value);
+        if (!rows[i].extra.isEmpty()) {
+            p.setPen(extra_colour);
+            p.drawText(QRectF(extra_x, y, extra_w, row_h),
+                       Qt::AlignLeft | Qt::AlignVCenter, rows[i].extra.simplified());
+        }
+    }
+
+    p.restore();
+}
+
 void Viewport::paintMeasure(QPainter &p, QColor fore, QColor back)
 {
     const int line_width = 1;
@@ -2099,12 +2515,12 @@ void Viewport::paintMeasure(QPainter &p, QColor fore, QColor back)
     int hoverpoint_x = _view.hover_point().x();
     int hoverpoint_y = _view.hover_point().y();
 
-    QColor hover_color = fore;
-    hover_color.setAlpha(140);
-    p.setPen(QPen(hover_color, 1, Qt::DashLine));
-    p.drawLine(QLineF(hoverpoint_x, 0, hoverpoint_x, _view.get_view_height()));
+    // The vertical guide at the mouse is drawn by paintHoverLine(), which
+    // the "Vertical line at mouse position" option switches.
 
-    if (_action_type == NO_ACTION &&
+    // The brackets and the value box at the mouse belong to the floating
+    // measurement: hidden while "Enable floating measurement" is off.
+    if (_measure_en && _action_type == NO_ACTION &&
         _measure_type == LOGIC_FREQ) {
         int widthY = _cur_midY - 4;
         int periodY = _cur_midY + 4;
@@ -2167,101 +2583,16 @@ void Viewport::paintMeasure(QPainter &p, QColor fore, QColor back)
         }
 
         if (_measure_en) {
-            // Scale the hover info popup together with the traces/text.
-            const double sc = _view.get_trace_font_scale();
-
-            // Use an explicit (scaled, non-condensed) font so the popup text
-            // and its box stay consistent regardless of prior painter state.
-            QFont measure_font = p.font();
-            measure_font.setStretch(QFont::Unstretched);
-            float mfSize = AppConfig::Instance().GetTraceFontSize();
-            measure_font.setPointSizeF(mfSize * sc);
-            p.setFont(measure_font);
-
-            int typical_width = p.boundingRect(0, 0, INT_MAX, INT_MAX,
-                Qt::AlignLeft | Qt::AlignTop, _mm_width_time).width();
-            typical_width = max(typical_width, p.boundingRect(0, 0, INT_MAX, INT_MAX,
-                Qt::AlignLeft | Qt::AlignTop, _mm_period_time).width());
-            typical_width = max(typical_width, p.boundingRect(0, 0, INT_MAX, INT_MAX,
-                Qt::AlignLeft | Qt::AlignTop, _mm_freq).width());
-            typical_width = max(typical_width, p.boundingRect(0, 0, INT_MAX, INT_MAX,
-                Qt::AlignLeft | Qt::AlignTop, _mm_duty).width());
-
-            // Measure the (localized) row labels too - a flat padding guess
-            // isn't enough once translations run longer than English (e.g.
-            // German "Tastverhältnis: " for "Duty Cycle: "), which is what
-            // caused the label and value text to overlap in the same row.
-            const QString label_width_str = L_S(STR_PAGE_DLG, S_ID(IDS_DLG_WIDTH), "Width: ");
-            const QString label_period_str = L_S(STR_PAGE_DLG, S_ID(IDS_DLG_PERIOD), "Period: ");
-            const QString label_freq_str = L_S(STR_PAGE_DLG, S_ID(IDS_DLG_FREQUENCY), "Frequency: ");
-            const QString label_duty_str = L_S(STR_PAGE_DLG, S_ID(IDS_DLG_DUTY_CYCLE), "Duty Cycle: ");
-            int label_width = p.boundingRect(0, 0, INT_MAX, INT_MAX,
-                Qt::AlignLeft | Qt::AlignTop, label_width_str).width();
-            label_width = max(label_width, p.boundingRect(0, 0, INT_MAX, INT_MAX,
-                Qt::AlignLeft | Qt::AlignTop, label_period_str).width());
-            label_width = max(label_width, p.boundingRect(0, 0, INT_MAX, INT_MAX,
-                Qt::AlignLeft | Qt::AlignTop, label_freq_str).width());
-            label_width = max(label_width, p.boundingRect(0, 0, INT_MAX, INT_MAX,
-                Qt::AlignLeft | Qt::AlignTop, label_duty_str).width());
-
-            typical_width = typical_width + label_width + (int)(40 * sc);
-
-            const QString mm_period_samples_long = _mm_period_samples + " " + L_S(STR_PAGE_DLG, S_ID(IDS_DLG_SAMPLES), " samples");
-            const QString mm_width_samples_long = _mm_width_samples + " " + L_S(STR_PAGE_DLG, S_ID(IDS_DLG_SAMPLES), " samples");
-            const double box_h = 140.0 * sc;
-            const double pad = 5.0 * sc;
-            const double row_h = 20.0 * sc;
-            const double width = _view.get_view_width() - _view.verticalScrollBar()->geometry().width();
-            // Drawn in viewport coordinates, so clamp against this widget's
-            // own height less whatever the status bar covers. The old
-            // View::StatusHeight constant is the LOGIC height - in DSO the
-            // bar is 55px and the popup ended up behind it.
-            const double height = this->height() - _view.get_status_overlap();
-            const double left = hoverpoint_x;
-            const double top = hoverpoint_y;
-            const double right = left + typical_width;
-            const double bottom = top + box_h;
-            double hover_x, hover_y;
-            if(right > width) {
-                hover_x = left - typical_width - MouseEdgeClearance;
-            } else {
-                hover_x = left + MousePointerClearance;
-            }
-            if(bottom > height) {
-                hover_y = top - box_h - MousePointerClearance;
-                if(right <= width) {
-                    hover_x = left + MouseEdgeClearance;
-                }
-            } else {
-                hover_y = top + MousePointerClearance;
-            }
-            QPointF org_pos = QPointF(hover_x, hover_y);
-            const double tw = (double)typical_width - 2 * pad;
-            QRectF measure_rect  = QRectF(org_pos.x(), org_pos.y(), (double)typical_width, box_h);
-            QRectF measure1_rect = QRectF(org_pos.x()+pad, org_pos.y()+pad,        tw, row_h);
-            QRectF measure2_rect = QRectF(org_pos.x()+pad, org_pos.y()+25.0*sc,    tw, row_h);
-            QRectF measure3_rect = QRectF(org_pos.x()+pad, org_pos.y()+50.0*sc,    tw, row_h);
-            QRectF measure4_rect = QRectF(org_pos.x()+pad, org_pos.y()+70.0*sc,    tw, row_h);
-            QRectF measure5_rect = QRectF(org_pos.x()+pad, org_pos.y()+95.0*sc,    tw, row_h);
-            QRectF measure6_rect = QRectF(org_pos.x()+pad, org_pos.y()+115.0*sc,   tw, row_h);
-
-            p.setPen(Qt::NoPen);
-            p.setBrush(back.black() > 0x80 ? View::TransparentLightBlue : View::TransparentLightYellow);
-            p.drawRect(measure_rect);
-
-            p.setPen(active_color);
-            p.drawText(measure1_rect, Qt::AlignLeft | Qt::AlignVCenter, label_width_str);
-            p.drawText(measure1_rect, Qt::AlignRight | Qt::AlignVCenter,_mm_width_time);
-            p.drawText(measure2_rect, Qt::AlignRight | Qt::AlignVCenter,mm_width_samples_long);
-            p.setPen(active_color2);
-            p.drawText(measure3_rect, Qt::AlignLeft | Qt::AlignVCenter, label_period_str);
-            p.drawText(measure3_rect, Qt::AlignRight | Qt::AlignVCenter, _mm_period_time);
-            p.drawText(measure4_rect, Qt::AlignRight | Qt::AlignVCenter, mm_period_samples_long);
-            p.setPen(active_color);
-            p.drawText(measure5_rect, Qt::AlignLeft | Qt::AlignVCenter, label_freq_str);
-            p.drawText(measure5_rect, Qt::AlignRight | Qt::AlignVCenter, _mm_freq);
-            p.drawText(measure6_rect, Qt::AlignLeft | Qt::AlignVCenter, label_duty_str);
-            p.drawText(measure6_rect, Qt::AlignRight | Qt::AlignVCenter, _mm_duty);
+            const QString samples_str = L_S(STR_PAGE_DLG, S_ID(IDS_DLG_SAMPLES), " samples");
+            const std::vector<MeasureRow> rows = {
+                { L_S(STR_PAGE_DLG, S_ID(IDS_DLG_WIDTH), "Width: "), _mm_width_time,
+                  _mm_width_samples + " " + samples_str, active_color },
+                { L_S(STR_PAGE_DLG, S_ID(IDS_DLG_PERIOD), "Period: "), _mm_period_time,
+                  _mm_period_samples + " " + samples_str, active_color2 },
+                { L_S(STR_PAGE_DLG, S_ID(IDS_DLG_FREQUENCY), "Frequency: "), _mm_freq, QString(), active_color },
+                { L_S(STR_PAGE_DLG, S_ID(IDS_DLG_DUTY_CYCLE), "Duty Cycle: "), _mm_duty, QString(), active_color },
+            };
+            paintMeasureBalloon(p, fore, back, rows);
         }
     }
 
@@ -2552,35 +2883,16 @@ void Viewport::paintMeasure(QPainter &p, QColor fore, QColor back)
         p.setPen(QPen(active_color, 1, Qt::DashLine));
         p.drawLine(QLineF(_cur_preX, _cur_midY, _cur_preX, hoverpoint_y));
         p.drawLine(QLineF(_cur_aftX, _cur_midY, _cur_aftX, hoverpoint_y));
-        int typical_width = p.boundingRect(0, 0, INT_MAX, INT_MAX,
-            Qt::AlignLeft | Qt::AlignTop, _em_edges).width();
-        typical_width = max(typical_width, p.boundingRect(0, 0, INT_MAX, INT_MAX,
-            Qt::AlignLeft | Qt::AlignTop, _em_rising).width());
-        typical_width = max(typical_width, p.boundingRect(0, 0, INT_MAX, INT_MAX,
-            Qt::AlignLeft | Qt::AlignTop, _em_falling).width());
 
-        typical_width = typical_width + 60;
-
-        const double width = _view.get_view_width();
-        const double height = _view.viewport()->height();
-        const double left = hoverpoint_x;
-        const double top = hoverpoint_y;
-        const double right = left + typical_width;
-        const double bottom = top + 60;
-        QPointF org_pos = QPointF(right > width ? left - typical_width : left, bottom > height ? top - 80 : top);
-        QRectF measure_rect = QRectF(org_pos.x(), org_pos.y(), (double)typical_width, 60.0);
-        QRectF measure1_rect = QRectF(org_pos.x(), org_pos.y(), (double)typical_width, 20.0);
-        QRectF measure2_rect = QRectF(org_pos.x(), org_pos.y()+20, (double)typical_width, 20.0);
-        QRectF measure3_rect = QRectF(org_pos.x(), org_pos.y()+40, (double)typical_width, 20.0);
-
-        p.setPen(Qt::NoPen);
-        p.setBrush(back.black() > 0x80 ? View::TransparentLightBlue : View::TransparentLightYellow);
-        p.drawRect(measure_rect);
-
-        p.setPen(active_color);
-        p.drawText(measure1_rect, Qt::AlignRight | Qt::AlignVCenter, _em_edges);
-        p.drawText(measure2_rect, Qt::AlignRight | Qt::AlignVCenter, _em_rising);
-        p.drawText(measure3_rect, Qt::AlignRight | Qt::AlignVCenter, _em_falling);
+        const std::vector<MeasureRow> rows = {
+            { L_S(STR_PAGE_DLG, S_ID(IDS_DLG_Edges_1), "Edges: "),
+              QString::number(_edge_rising + _edge_falling), QString(), active_color },
+            { L_S(STR_PAGE_DLG, S_ID(IDS_DLG_RISING), "Rising: "),
+              QString::number(_edge_rising), QString(), active_color },
+            { L_S(STR_PAGE_DLG, S_ID(IDS_DLG_FALLING), "Falling: "),
+              QString::number(_edge_falling), QString(), active_color },
+        };
+        paintMeasureBalloon(p, fore, back, rows);
     }
 
     if (_action_type == LOGIC_JUMP) {
@@ -2613,31 +2925,22 @@ void Viewport::paintMeasure(QPainter &p, QColor fore, QColor back)
                 };
                 p.drawPoints(aft_points, countof(aft_points));
             }
-            int64_t delta = max(_edge_start, _edge_end) - min(_edge_start, _edge_end);
-            QString delta_text = _view.get_index_delta(_edge_start, _edge_end) +
-                                 "/" + QString::number(delta);
-            QFontMetrics fm = this->fontMetrics();
-
-            const int rectW = fm.boundingRect(delta_text).width() + 60;
-            const int rectH = fm.height() + 10;
-
-            const int rectY = (height() - hoverpoint_x < rectH + 20) ? hoverpoint_y - 10 - rectH : hoverpoint_y + 20;
-            const int rectX = (width() - hoverpoint_x < rectW) ? hoverpoint_x - rectW : hoverpoint_x;
-            QRectF jump_rect = QRectF(rectX, rectY, rectW, rectH);
-
-            p.setPen(Qt::NoPen);
-            p.setBrush(View::TransparentLightBlue);
-            p.drawRect(jump_rect);
-
-            p.setPen(active_color);
-            p.setBrush(Qt::NoBrush);
-            p.drawText(jump_rect, Qt::AlignCenter | Qt::AlignVCenter, delta_text);
-
             QPainterPath path(QPoint(_cur_preX, _cur_preY));
             QPoint c1((_cur_preX+_cur_aftX)/2, _cur_preY);
             QPoint c2((_cur_preX+_cur_aftX)/2, _cur_aftY);
             path.cubicTo(c1, c2, QPoint(_cur_aftX, _cur_aftY));
             p.drawPath(path);
+
+            // Time and samples between the two edges, laid out like the
+            // floating measurement's Width and Period rows.
+            const uint64_t delta = max(_edge_start, _edge_end) - min(_edge_start, _edge_end);
+            const QString samples_str = L_S(STR_PAGE_DLG, S_ID(IDS_DLG_SAMPLES), " samples");
+            const std::vector<MeasureRow> rows = {
+                { QString(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_TIME), "Time")) + ":",
+                  _view.get_index_delta(_edge_start, _edge_end),
+                  _view.get_ruler()->format_samples(delta) + " " + samples_str, active_color },
+            };
+            paintMeasureBalloon(p, fore, back, rows);
         }
     }
 }

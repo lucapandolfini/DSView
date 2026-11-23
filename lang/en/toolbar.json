@@ -194,6 +194,42 @@
     {
         "id": "IDS_TOOLBAR_HELP_LOG",
         "text": "L&og Options"
+    },
+    {
+        "id": "IDS_TOOLBAR_FIT_VERTICAL",
+        "text": "Fit"
+    },
+    {
+        "id": "IDS_TOOLBAR_FIT_VERTICAL_TIP",
+        "text": "Shrink all channels to fit the window"
+    },
+    {
+        "id": "IDS_TOOLBAR_DSO_SPLIT",
+        "text": "Split"
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_BEGIN",
+        "text": "Begin"
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_BEGIN_TIP",
+        "text": "Go to the start of the capture, keeping the zoom"
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_TRIG",
+        "text": "Trig Pos"
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_TRIG_TIP",
+        "text": "Center the view on the trigger position, keeping the zoom"
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_END",
+        "text": "End"
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_END_TIP",
+        "text": "Go to the end of the capture, keeping the zoom"
     }
 
 

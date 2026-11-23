@@ -60,6 +60,18 @@
         "text": "关于"
     },
     {
+        "id": "IDS_DLG_ABOUT_FORKED_FROM",
+        "text": "复刻自："
+    },
+    {
+        "id": "IDS_DLG_ABOUT_FORK_BY",
+        "text": "%1 的复刻："
+    },
+    {
+        "id": "IDS_DLG_ABOUT_REFORKED_BY",
+        "text": "%1 再次复刻："
+    },
+    {
         "id": "IDS_DLG_DISPLAY_OPTIONS",
         "text": "显示选项"
     },
@@ -177,7 +189,7 @@
     },
     {
         "id": "IDS_DLG_DBV_RANGE",
-        "text": "DBV范围: "
+        "text": "dBV范围: "
     },
     {
         "id": "IDS_DLG_FFT_OPTIONS",
@@ -321,15 +333,15 @@
     },
     {
         "id": "IDS_DLG_US",
-        "text": "uS"
+        "text": "µs"
     },
     {
         "id": "IDS_DLG_MS",
-        "text": "mS"
+        "text": "ms"
     },
     {
         "id": "IDS_DLG_S",
-        "text": "S"
+        "text": "s"
     },
     {
         "id": "IDS_DLG_TRIGGER_POSITION",
@@ -860,7 +872,111 @@
         "text": "关"
     },
     {
-        "id": "IDS_DLG_SNAP_VSCROLL",
-        "text": "滚动时对齐通道"
+        "id": "IDS_DLG_EXPORT_SEPARATOR",
+        "text": "分隔符: "
+    },
+    {
+        "id": "IDS_DLG_SEPARATOR_COMMA",
+        "text": "逗号 ( , )"
+    },
+    {
+        "id": "IDS_DLG_SEPARATOR_SEMICOLON",
+        "text": "分号 ( ; )"
+    },
+    {
+        "id": "IDS_DLG_SEPARATOR_TAB",
+        "text": "制表符"
+    },
+    {
+        "id": "IDS_DLG_SEPARATOR_PIPE",
+        "text": "竖线 ( | )"
+    },
+    {
+        "id": "IDS_DLG_SEPARATOR_SPACE",
+        "text": "空格"
+    },
+    {
+        "id": "IDS_DLG_EXPORT_BETWEEN_CURSORS",
+        "text": "仅导出光标之间: "
+    },
+    {
+        "id": "IDS_DLG_EXPORT_RANGE_NEED_CURSORS",
+        "text": "请先在波形上放置至少两个光标。"
+    },
+    {
+        "id": "IDS_DLG_GROUP_LOGIC_COLORS",
+        "text": "逻辑通道颜色"
+    },
+    {
+        "id": "IDS_DLG_HIGH_LEVEL_COLOR",
+        "text": "高电平颜色"
+    },
+    {
+        "id": "IDS_DLG_LOW_LEVEL_COLOR",
+        "text": "低电平颜色"
+    },
+    {
+        "id": "IDS_DLG_FILL_LOGIC_HIGH",
+        "text": "填充高电平区域"
+    },
+    {
+        "id": "IDS_DLG_FILL_COLOR",
+        "text": "填充颜色"
+    },
+    {
+        "id": "IDS_DLG_RESET_COLORS",
+        "text": "重置颜色"
+    },
+    {
+        "id": "IDS_DLG_SHOW_SAMPLE_POINTS",
+        "text": "放大时显示采样点"
+    },
+    {
+        "id": "IDS_DLG_HOVER_LINE",
+        "text": "在鼠标位置显示竖线"
+    },
+    {
+        "id": "IDS_DLG_COPY_ANNOTATION",
+        "text": "复制注释文本"
+    },
+    {
+        "id": "IDS_DLG_COPY_ANNOTATION_WITH_ROW",
+        "text": "连同行名称一起复制"
+    },
+    {
+        "id": "IDS_DLG_SIGNAL_LINE_WIDTH",
+        "text": "信号线宽"
+    },
+    {
+        "id": "IDS_DLG_CHANNEL_DIVIDER",
+        "text": "通道分隔线"
+    },
+    {
+        "id": "IDS_DLG_GROUP_WAVEFORM_VIEW",
+        "text": "波形视图"
+    },
+    {
+        "id": "IDS_DLG_HIGHLIGHT_HOVER_ROW",
+        "text": "高亮鼠标所在通道"
+    },
+    {
+        "id": "IDS_DLG_CURSOR_DELTA_BAND",
+        "text": "显示光标间时间 (1-2, 3-4, ...)"
+    },
+    {
+        "id": "IDS_DLG_TRIGGER_LINE",
+        "text": "突出显示触发位置"
+    },
+    {
+        "id": "IDS_DLG_PIN_DECODER",
+        "text": "固定到顶部"
+    },
+    {
+        "id": "IDS_DLG_UNPIN_DECODER",
+        "text": "取消固定"
+    },
+    {
+        "id": "IDS_DLG_DECODER_CHANNEL_COLORS",
+        "text": "总线通道使用解码颜色"
     }
 ]

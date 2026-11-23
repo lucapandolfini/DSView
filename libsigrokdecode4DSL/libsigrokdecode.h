@@ -211,6 +211,44 @@ struct srd_decoder {
 
 	/** sigrokdecode.Decoder class. */
 	void *py_dec;
+
+	/*
+	 * Optional display hints, for front ends. Decoders that don't set
+	 * them get the defaults (all zero / empty).
+	 */
+
+	/** 'pin_on_top = True': show the decoder above the channels. */
+	int pin_on_top;
+
+	/** 'fixed_label = True': always label the decoder with its name. */
+	int fixed_label;
+
+	/**
+	 * 'channel_colours': list of struct srd_decoder_channel_colour,
+	 * channels drawn in the colour of an annotation class.
+	 */
+	GSList *channel_colours;
+
+	/**
+	 * 'annotation_colours': list of struct srd_decoder_annotation_colour,
+	 * fixed colours for some annotation classes.
+	 */
+	GSList *annotation_colours;
+};
+
+/**
+ * Channels whose id is 'prefix' followed by digits only (e.g. "a" for
+ * a0..a15) are drawn in the colour of annotation class 'ann_class'.
+ */
+struct srd_decoder_channel_colour {
+	char *prefix;
+	int ann_class;
+};
+
+/** Annotations of class 'ann_class' are drawn in 'colour' ("#rrggbb"). */
+struct srd_decoder_annotation_colour {
+	int ann_class;
+	char *colour;
 };
 
 enum srd_initial_pin {

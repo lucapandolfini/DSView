@@ -25,6 +25,7 @@
 #include <QLocale>
 #include <QDir>
 #include <assert.h>
+#include <algorithm>
 #include <QStandardPaths>
 #include "../log.h"
 
@@ -107,6 +108,19 @@ static void setFiled(const char *key, QSettings &st, float f)
     st.setValue(key, f);
 }
 
+// Colours are stored as "#AARRGGBB" so a fill colour keeps its transparency.
+static void getFiled(const char *key, QSettings &st, QColor &f, const QColor &dv)
+{
+    f = QColor(st.value(key, "").toString());
+    if (!f.isValid())
+        f = dv;
+}
+
+static void setFiled(const char *key, QSettings &st, const QColor &f)
+{
+    st.setValue(key, f.name(QColor::HexArgb));
+}
+
 ///------ app
 static void _loadApp(AppOptions &o, QSettings &st)
 {
@@ -119,26 +133,48 @@ static void _loadApp(AppOptions &o, QSettings &st)
     getFiled("logLevel", st, o.logLevel, 3);
     getFiled("transDecoderDlg", st, o.transDecoderDlg, true);
     getFiled("trigPosDisplayInMid", st, o.trigPosDisplayInMid, true);
-    getFiled("displayProfileInBar", st, o.displayProfileInBar, false);
+    getFiled("displayProfileInBar", st, o.displayProfileInBar, true);
     getFiled("swapBackBufferAlways", st, o.swapBackBufferAlways, false);
-    getFiled("fontSize", st, o.fontSize, 9.0);
+    getFiled("fontSize", st, o.fontSize, DEFAULT_FONT_SIZE);
     getFiled("autoScrollLatestData", st, o.autoScrollLatestData, true);
     getFiled("verticalScrollIsZoom", st, o.verticalScrollIsZoom, true);
-    getFiled("traceHeightFactor", st, o.traceHeightFactor, 1.0);
+    getFiled("traceHeightFactor", st, o.traceHeightFactor, DEFAULT_TRACE_HEIGHT_FACTOR);
     getFiled("version", st, o.version, 1);
     getFiled("rulerTimeUnits", st, o.rulerTimeUnits, "Time");
     getFiled("antialias", st, o.antialias, true);
-    getFiled("decoderDynamicFontWidth", st, o.decoderDynamicFontWidth, false);
-    getFiled("maxDecoderFontWidthPercent", st, o.maxDecoderFontWidthPercent, 125);
-    getFiled("minDecoderFontWidthPercent", st, o.minDecoderFontWidthPercent, 75);
+    getFiled("decoderDynamicFontWidth", st, o.decoderDynamicFontWidth, true);
+    getFiled("maxDecoderFontWidthPercent", st, o.maxDecoderFontWidthPercent, 120);
+    getFiled("minDecoderFontWidthPercent", st, o.minDecoderFontWidthPercent, 80);
     getFiled("dontAskSaveOnExit", st, o.dontAskSaveOnExit, false);
     getFiled("logicSignalLineWidth", st, o.logicSignalLineWidth, 1.0f);
     getFiled("logicChannelDivider", st, o.logicChannelDivider, true);
-    getFiled("logicSnapVScroll", st, o.logicSnapVScroll, true);
     getFiled("dsoSplitChannels", st, o.dsoSplitChannels, false);
     getFiled("dsoSignalLineWidth", st, o.dsoSignalLineWidth, 1.0f);
     getFiled("dsoPersistenceMs", st, o.dsoPersistenceMs, 0);
     getFiled("toolbarIconSize", st, o.toolbarIconSize, DefaultToolbarIconSize);
+    // One switch for both levels before they got one each: if a config
+    // still has it, it sets both; otherwise only the low level is coloured.
+    bool colorHighDefault = false;
+    bool colorLowDefault = true;
+    if (st.contains("colorLogicLevels")){
+        getFiled("colorLogicLevels", st, colorHighDefault, false);
+        colorLowDefault = colorHighDefault;
+    }
+    getFiled("colorLogicHigh", st, o.colorLogicHigh, colorHighDefault);
+    getFiled("colorLogicLow", st, o.colorLogicLow, colorLowDefault);
+    getFiled("logicHighColor", st, o.logicHighColor, DEFAULT_LOGIC_HIGH_COLOR);
+    getFiled("logicLowColor", st, o.logicLowColor, DEFAULT_LOGIC_LOW_COLOR);
+    getFiled("fillLogicHigh", st, o.fillLogicHigh, true);
+    getFiled("logicFillColor", st, o.logicFillColor, DEFAULT_LOGIC_FILL_COLOR);
+    getFiled("showSamplePoints", st, o.showSamplePoints, true);
+    // New key: the fork already showed this line always, so it defaults to on
+    // (the old "hoverLine" key defaulted to off and is no longer read).
+    getFiled("mouseGuideLine", st, o.hoverLine, true);
+    getFiled("cursorDeltaBand", st, o.cursorDeltaBand, true);
+    getFiled("triggerLine", st, o.triggerLine, true);
+    getFiled("highlightHoverRow", st, o.highlightHoverRow, true);
+    getFiled("decoderChannelColors", st, o.decoderChannelColours, true);
+    getFiled("floatingMeasure", st, o.floatingMeasure, false);
 
     o.warnofMultiTrig = true;
 
@@ -154,12 +190,12 @@ static void _loadApp(AppOptions &o, QSettings &st)
 
     if (o.version == 1 || o.fontSize < minSize || o.fontSize > maxSize)
     {
-        o.fontSize = (maxSize + minSize) / 2;
+        o.fontSize = std::min(std::max(DEFAULT_FONT_SIZE, minSize), maxSize);
     }
 
     if (o.traceHeightFactor < 0.1 || o.traceHeightFactor > 20.0)
     {
-        o.traceHeightFactor = 1.0;
+        o.traceHeightFactor = DEFAULT_TRACE_HEIGHT_FACTOR;
     }
 
     if (o.toolbarIconSize != 0
@@ -212,11 +248,23 @@ static void _saveApp(AppOptions &o, QSettings &st)
     setFiled("dontAskSaveOnExit", st, o.dontAskSaveOnExit);
     setFiled("logicSignalLineWidth", st, o.logicSignalLineWidth);
     setFiled("logicChannelDivider", st, o.logicChannelDivider);
-    setFiled("logicSnapVScroll", st, o.logicSnapVScroll);
     setFiled("dsoSplitChannels", st, o.dsoSplitChannels);
     setFiled("dsoSignalLineWidth", st, o.dsoSignalLineWidth);
     setFiled("dsoPersistenceMs", st, o.dsoPersistenceMs);
     setFiled("toolbarIconSize", st, o.toolbarIconSize);
+    setFiled("colorLogicHigh", st, o.colorLogicHigh);
+    setFiled("colorLogicLow", st, o.colorLogicLow);
+    setFiled("logicHighColor", st, o.logicHighColor);
+    setFiled("logicLowColor", st, o.logicLowColor);
+    setFiled("fillLogicHigh", st, o.fillLogicHigh);
+    setFiled("logicFillColor", st, o.logicFillColor);
+    setFiled("showSamplePoints", st, o.showSamplePoints);
+    setFiled("mouseGuideLine", st, o.hoverLine);
+    setFiled("cursorDeltaBand", st, o.cursorDeltaBand);
+    setFiled("triggerLine", st, o.triggerLine);
+    setFiled("highlightHoverRow", st, o.highlightHoverRow);
+    setFiled("decoderChannelColors", st, o.decoderChannelColours);
+    setFiled("floatingMeasure", st, o.floatingMeasure);
 
     QString fmt =  FormatArrayToString(o.m_protocolFormats);
     setFiled("protocalFormats", st, fmt);
@@ -312,12 +360,13 @@ static void _loadHistory(UserHistory &o, QSettings &st)
     st.beginGroup("UserHistory");
     getFiled("exportDir", st, o.exportDir, "");
     getFiled("saveDir", st, o.saveDir, "");
-    getFiled("showDocuments", st, o.showDocuments, true);
+    getFiled("showDocuments", st, o.showDocuments, false);
     getFiled("screenShotPath", st, o.screenShotPath, "");
     getFiled("sessionDir", st, o.sessionDir, "");
     getFiled("openDir", st, o.openDir, "");
     getFiled("protocolExportPath", st, o.protocolExportPath, "");
     getFiled("exportFormat", st, o.exportFormat, "");
+    getFiled("protocolExportSeparator", st, o.protocolExportSeparator, ",");
     getFiled("showDriverHint", st, o.showDriverHint, true);
     st.endGroup();
 }
@@ -333,6 +382,7 @@ static void _saveHistory(UserHistory &o, QSettings &st)
     setFiled("openDir", st, o.openDir);
     setFiled("protocolExportPath", st, o.protocolExportPath);
     setFiled("exportFormat", st, o.exportFormat);
+    setFiled("protocolExportSeparator", st, o.protocolExportSeparator);
     setFiled("showDriverHint", st, o.showDriverHint);
     st.endGroup();
 }

@@ -157,6 +157,28 @@ static void decoder_option_free(void *data)
 	g_free(opt);
 }
 
+static void channel_colour_free(void *data)
+{
+	struct srd_decoder_channel_colour *cc = data;
+
+	if (!cc)
+		return;
+
+	g_free(cc->prefix);
+	g_free(cc);
+}
+
+static void annotation_colour_free(void *data)
+{
+	struct srd_decoder_annotation_colour *ac = data;
+
+	if (!ac)
+		return;
+
+	g_free(ac->colour);
+	g_free(ac);
+}
+
 static void decoder_free(struct srd_decoder *dec)
 {
 	PyGILState_STATE gstate;
@@ -169,6 +191,8 @@ static void decoder_free(struct srd_decoder *dec)
 	Py_XDECREF(dec->py_mod);
 	PyGILState_Release(gstate);
 
+	g_slist_free_full(dec->channel_colours, &channel_colour_free);
+	g_slist_free_full(dec->annotation_colours, &annotation_colour_free);
 	g_slist_free_full(dec->options, &decoder_option_free);
 	g_slist_free_full(dec->binary, (GDestroyNotify)&g_strfreev);
 	g_slist_free_full(dec->annotation_rows, &annotation_row_free);
@@ -186,6 +210,171 @@ static void decoder_free(struct srd_decoder *dec)
 	g_free(dec->id);
 
 	g_free(dec);
+}
+
+/* An optional boolean class attribute; missing or unreadable means 0. */
+static int py_attr_as_flag(PyObject *py_obj, const char *attr)
+{
+	PyObject *py_attr;
+	int ret = 0;
+
+	if (!PyObject_HasAttrString(py_obj, attr))
+		return 0;
+
+	py_attr = PyObject_GetAttrString(py_obj, attr);
+	if (!py_attr) {
+		PyErr_Clear();
+		return 0;
+	}
+
+	ret = PyObject_IsTrue(py_attr);
+	Py_DECREF(py_attr);
+	if (ret < 0) {
+		PyErr_Clear();
+		ret = 0;
+	}
+
+	return ret;
+}
+
+/* Index of the annotation class with this id, or -1. */
+static int annotation_class_index(struct srd_decoder *d, const char *ann_id)
+{
+	PyObject *py_anns, *py_ann, *py_id;
+	ssize_t i, n;
+	int found = -1;
+	char *id;
+
+	py_anns = PyObject_GetAttrString(d->py_dec, "annotations");
+	if (!py_anns) {
+		PyErr_Clear();
+		return -1;
+	}
+
+	if (PyTuple_Check(py_anns)) {
+		for (i = 0; i < PyTuple_Size(py_anns) && found < 0; i++) {
+			py_ann = PyTuple_GetItem(py_anns, i);
+			if (!py_ann || !PyTuple_Check(py_ann))
+				continue;
+			n = PyTuple_Size(py_ann);
+			/* ('id', 'desc') or ('type', 'id', 'desc') */
+			py_id = PyTuple_GetItem(py_ann, n == 3 ? 1 : 0);
+			if (py_id && py_str_as_str(py_id, &id) == SRD_OK) {
+				if (strcmp(id, ann_id) == 0)
+					found = (int)i;
+				g_free(id);
+			}
+		}
+	}
+	PyErr_Clear();
+	Py_DECREF(py_anns);
+
+	return found;
+}
+
+/*
+ * Reads an optional tuple of string pairs, e.g. (('addr', '#80c8bd'),).
+ * Returns the number of pairs handed to 'add', or -1 if the attribute is
+ * not a tuple of pairs. 'add' takes ownership of both strings.
+ */
+static int get_string_pairs(struct srd_decoder *d, const char *attr,
+		void (*add)(struct srd_decoder *d, char *first, char *second))
+{
+	PyObject *py_list, *py_pair;
+	char *first, *second;
+	ssize_t i;
+	int n = 0;
+
+	if (!PyObject_HasAttrString(d->py_dec, attr))
+		return 0;
+
+	py_list = PyObject_GetAttrString(d->py_dec, attr);
+	if (!py_list || !PyTuple_Check(py_list)) {
+		Py_XDECREF(py_list);
+		PyErr_Clear();
+		return -1;
+	}
+
+	for (i = 0; i < PyTuple_Size(py_list); i++) {
+		py_pair = PyTuple_GetItem(py_list, i);
+		if (!py_pair || !PyTuple_Check(py_pair) || PyTuple_Size(py_pair) != 2)
+			continue;
+		first = second = NULL;
+		if (py_str_as_str(PyTuple_GetItem(py_pair, 0), &first) == SRD_OK &&
+		    py_str_as_str(PyTuple_GetItem(py_pair, 1), &second) == SRD_OK) {
+			add(d, first, second);
+			n++;
+		} else {
+			g_free(first);
+			g_free(second);
+		}
+	}
+	PyErr_Clear();
+	Py_DECREF(py_list);
+
+	return n;
+}
+
+/* ('channel prefix', 'annotation id') */
+static void add_channel_colour(struct srd_decoder *d, char *prefix, char *ann_id)
+{
+	struct srd_decoder_channel_colour *cc;
+	int ann_class = annotation_class_index(d, ann_id);
+
+	if (ann_class < 0) {
+		srd_warn("Protocol decoder %s: 'channel_colours' names "
+			"unknown annotation '%s'.", d->name, ann_id);
+		g_free(prefix);
+	} else {
+		cc = g_malloc0(sizeof(struct srd_decoder_channel_colour));
+		cc->prefix = prefix;
+		cc->ann_class = ann_class;
+		d->channel_colours = g_slist_append(d->channel_colours, cc);
+	}
+	g_free(ann_id);
+}
+
+/* ('annotation id', '#rrggbb') */
+static void add_annotation_colour(struct srd_decoder *d, char *ann_id, char *colour)
+{
+	struct srd_decoder_annotation_colour *ac;
+	int ann_class = annotation_class_index(d, ann_id);
+
+	if (ann_class < 0) {
+		srd_warn("Protocol decoder %s: 'annotation_colours' names "
+			"unknown annotation '%s'.", d->name, ann_id);
+		g_free(colour);
+	} else {
+		ac = g_malloc0(sizeof(struct srd_decoder_annotation_colour));
+		ac->ann_class = ann_class;
+		ac->colour = colour;
+		d->annotation_colours = g_slist_append(d->annotation_colours, ac);
+	}
+	g_free(ann_id);
+}
+
+/*
+ * Optional display hints. A malformed hint is ignored with a warning,
+ * it never stops the decoder from loading.
+ */
+static void get_display_hints(struct srd_decoder *d)
+{
+	PyGILState_STATE gstate;
+
+	gstate = PyGILState_Ensure();
+
+	d->pin_on_top = py_attr_as_flag(d->py_dec, "pin_on_top");
+	d->fixed_label = py_attr_as_flag(d->py_dec, "fixed_label");
+
+	if (get_string_pairs(d, "channel_colours", &add_channel_colour) < 0)
+		srd_warn("Protocol decoder %s: 'channel_colours' should be a "
+			"tuple of ('channel prefix', 'annotation id') pairs.", d->name);
+
+	if (get_string_pairs(d, "annotation_colours", &add_annotation_colour) < 0)
+		srd_warn("Protocol decoder %s: 'annotation_colours' should be a "
+			"tuple of ('annotation id', '#rrggbb') pairs.", d->name);
+
+	PyGILState_Release(gstate);
 }
 
 static int get_channels(const struct srd_decoder *d, const char *attr,
@@ -903,6 +1092,8 @@ SRD_API int srd_decoder_load(const char *module_name)
 		fail_txt = "cannot get binary classes";
 		goto err_out;
 	}
+
+	get_display_hints(d);
 
 	PyGILState_Release(gstate);
 

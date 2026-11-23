@@ -60,6 +60,18 @@
         "text": "Über"
     },
     {
+        "id": "IDS_DLG_ABOUT_FORKED_FROM",
+        "text": "Abgeleitet von:"
+    },
+    {
+        "id": "IDS_DLG_ABOUT_FORK_BY",
+        "text": "Fork von %1:"
+    },
+    {
+        "id": "IDS_DLG_ABOUT_REFORKED_BY",
+        "text": "Erneut geforkt von %1:"
+    },
+    {
         "id": "IDS_DLG_DISPLAY_OPTIONS",
         "text": "Anzeigeoptionen"
     },
@@ -177,7 +189,7 @@
     },
     {
         "id": "IDS_DLG_DBV_RANGE",
-        "text": "DBV-Bereich: "
+        "text": "dBV-Bereich: "
     },
     {
         "id": "IDS_DLG_FFT_OPTIONS",
@@ -856,7 +868,111 @@
         "text": "Aus"
     },
     {
-        "id": "IDS_DLG_SNAP_VSCROLL",
-        "text": "Beim Scrollen an Kanälen einrasten"
+        "id": "IDS_DLG_EXPORT_SEPARATOR",
+        "text": "Trennzeichen: "
+    },
+    {
+        "id": "IDS_DLG_SEPARATOR_COMMA",
+        "text": "Komma ( , )"
+    },
+    {
+        "id": "IDS_DLG_SEPARATOR_SEMICOLON",
+        "text": "Semikolon ( ; )"
+    },
+    {
+        "id": "IDS_DLG_SEPARATOR_TAB",
+        "text": "Tabulator"
+    },
+    {
+        "id": "IDS_DLG_SEPARATOR_PIPE",
+        "text": "Senkrechter Strich ( | )"
+    },
+    {
+        "id": "IDS_DLG_SEPARATOR_SPACE",
+        "text": "Leerzeichen"
+    },
+    {
+        "id": "IDS_DLG_EXPORT_BETWEEN_CURSORS",
+        "text": "Nur zwischen Cursorn: "
+    },
+    {
+        "id": "IDS_DLG_EXPORT_RANGE_NEED_CURSORS",
+        "text": "Setzen Sie dazu mindestens zwei Cursor auf die Kurve."
+    },
+    {
+        "id": "IDS_DLG_GROUP_LOGIC_COLORS",
+        "text": "Farben der Logikkanäle"
+    },
+    {
+        "id": "IDS_DLG_HIGH_LEVEL_COLOR",
+        "text": "Farbe High-Pegel"
+    },
+    {
+        "id": "IDS_DLG_LOW_LEVEL_COLOR",
+        "text": "Farbe Low-Pegel"
+    },
+    {
+        "id": "IDS_DLG_FILL_LOGIC_HIGH",
+        "text": "High-Bereiche füllen"
+    },
+    {
+        "id": "IDS_DLG_FILL_COLOR",
+        "text": "Füllfarbe"
+    },
+    {
+        "id": "IDS_DLG_RESET_COLORS",
+        "text": "Farben zurücksetzen"
+    },
+    {
+        "id": "IDS_DLG_SHOW_SAMPLE_POINTS",
+        "text": "Abtastpunkte beim Hineinzoomen zeigen"
+    },
+    {
+        "id": "IDS_DLG_HOVER_LINE",
+        "text": "Senkrechte Linie an der Mausposition"
+    },
+    {
+        "id": "IDS_DLG_COPY_ANNOTATION",
+        "text": "Annotationstext kopieren"
+    },
+    {
+        "id": "IDS_DLG_COPY_ANNOTATION_WITH_ROW",
+        "text": "Mit Zeilenname kopieren"
+    },
+    {
+        "id": "IDS_DLG_SIGNAL_LINE_WIDTH",
+        "text": "Signal-Linienbreite"
+    },
+    {
+        "id": "IDS_DLG_CHANNEL_DIVIDER",
+        "text": "Trennlinie zwischen Kanälen"
+    },
+    {
+        "id": "IDS_DLG_GROUP_WAVEFORM_VIEW",
+        "text": "Kurvenansicht"
+    },
+    {
+        "id": "IDS_DLG_HIGHLIGHT_HOVER_ROW",
+        "text": "Kanal unter der Maus hervorheben"
+    },
+    {
+        "id": "IDS_DLG_CURSOR_DELTA_BAND",
+        "text": "Zeit zwischen Cursorn (1-2, 3-4, ...)"
+    },
+    {
+        "id": "IDS_DLG_TRIGGER_LINE",
+        "text": "Triggerposition hervorheben"
+    },
+    {
+        "id": "IDS_DLG_PIN_DECODER",
+        "text": "Oben anheften"
+    },
+    {
+        "id": "IDS_DLG_UNPIN_DECODER",
+        "text": "Lösen"
+    },
+    {
+        "id": "IDS_DLG_DECODER_CHANNEL_COLORS",
+        "text": "Bus-Kanäle in Decoderfarben"
     }
 ]

@@ -69,10 +69,22 @@ const int View::SignalMargin = 12;
 const int View::SignalMarginCompact = 3;
 const int View::SignalSnapGridSize = 10;
 
+// Scale of the gaps between channels: below 1 when the logic traces are
+// zoomed out below normal size (see signals_changed()).
+static double s_margin_scale = 1.0;
+
 int View::get_signal_margin()
 {
-    return AppConfig::Instance().appOptions.logicChannelDivider
-        ? SignalMargin : SignalMarginCompact;
+    const bool divider = AppConfig::Instance().appOptions.logicChannelDivider;
+    const int margin = divider ? SignalMargin : SignalMarginCompact;
+    // Keep room for the 2 px divider line.
+    return max(divider ? 2 : 1, (int)round(margin * s_margin_scale));
+}
+
+bool View::trace_text_shown()
+{
+    return AppConfig::Instance().GetTraceFontSize() * get_trace_font_scale()
+           >= MinReadableFontSize;
 }
 
 const QColor View::CursorAreaColour(220, 231, 243);
@@ -100,6 +112,7 @@ View::View(SigSession *session, pv::toolbars::SamplingBar *sampling_bar, QWidget
     _y_offset(0),
     _preOffset(0),
 	_updating_scroll(false),
+    _snapping_v_scroll(false),
     _trig_hoff(0),
 	_show_cursors(false),
     _search_hit(false),
@@ -116,6 +129,7 @@ View::View(SigSession *session, pv::toolbars::SamplingBar *sampling_bar, QWidget
    _session = session;
    _device_agent = session->get_device();
 
+   _text_scale = 1.0;
    _trace_height_factor = AppConfig::Instance().appOptions.traceHeightFactor;
    if (_trace_height_factor < MinTraceHeightFactor || _trace_height_factor > MaxTraceHeightFactor)
        _trace_height_factor = 1.0;
@@ -215,12 +229,6 @@ View::View(SigSession *session, pv::toolbars::SamplingBar *sampling_bar, QWidget
 	connect(horizontalScrollBar(), SIGNAL(valueChanged(int)), this, SLOT(h_scroll_value_changed(int)));
 	connect(verticalScrollBar(), SIGNAL(valueChanged(int)), this, SLOT(v_scroll_value_changed(int)));
     connect(verticalScrollBar(), SIGNAL(sliderReleased()), this, SLOT(on_v_scroll_released()));
-
-    // Small wheel/touchpad steps arrive in bursts with no reliable end event
-    // (X11 and Windows report no scroll phases), so snap once they pause.
-    _v_snap_timer.setSingleShot(true);
-    _v_snap_timer.setInterval(VSnapIdleMs);
-    connect(&_v_snap_timer, &QTimer::timeout, this, [this]() { snap_v_scroll(); });
 
     connect(_time_viewport, SIGNAL(measure_updated()),this, SLOT(on_measure_updated()));
     connect(_time_viewport, SIGNAL(prgRate(int)), this, SIGNAL(prgRate(int)));
@@ -380,11 +388,17 @@ void View::set_trace_height_factor(double factor)
     if (factor == _trace_height_factor)
         return;
 
-    _trace_height_factor = factor;
+    apply_trace_height_factor(factor);
 
     AppConfig &app = AppConfig::Instance();
-    app.appOptions.traceHeightFactor = factor;
+    app.appOptions.traceHeightFactor = _trace_height_factor;
     app.SaveApp();
+}
+
+// Re-lays out the traces with a new vertical zoom, without saving it.
+void View::apply_trace_height_factor(double factor)
+{
+    _trace_height_factor = max(min(factor, MaxTraceHeightFactor), MinTraceHeightFactor);
 
     signals_changed(NULL);
     _header->update();
@@ -392,11 +406,105 @@ void View::set_trace_height_factor(double factor)
     update_scroll();
 }
 
+void View::fit_traces_vertically()
+{
+    if (_device_agent->have_instance() == false
+        || _device_agent->get_work_mode() != LOGIC)
+        return;
+
+    std::vector<Trace*> traces;
+    get_traces(TIME_VIEW, traces);
+
+    bool any = false;
+    for (auto t : traces) {
+        if (t->enabled() && t->rows_size() > 0)
+            any = true;
+    }
+    if (!any)
+        return;
+
+    auto fits = [this]() { return verticalScrollBar()->maximum() == 0; };
+
+    // Zoomed in and everything still fits: nothing to do.
+    if (_trace_height_factor >= 1.0 && fits())
+        return;
+
+    // The largest zoom, up to normal size, at which nothing is left to
+    // scroll. Rows and the gaps between channels shrink with the zoom (text
+    // too, hidden once unreadable); when even the smallest zoom can't hold
+    // everything, use the smallest.
+    double lo = MinTraceHeightFactor;
+    double hi = 1.0;
+
+    apply_trace_height_factor(hi);
+    if (fits()) {
+        lo = hi;
+    }
+    else {
+        apply_trace_height_factor(lo);
+        if (fits()) {
+            for (int i = 0; i < 14; i++) {
+                const double mid = sqrt(lo * hi);
+                apply_trace_height_factor(mid);
+                if (fits())
+                    lo = mid;
+                else
+                    hi = mid;
+            }
+        }
+    }
+    apply_trace_height_factor(lo);
+
+    AppConfig &app = AppConfig::Instance();
+    app.appOptions.traceHeightFactor = _trace_height_factor;
+    app.SaveApp();
+
+    verticalScrollBar()->setValue(0);
+}
+
+// Is there captured logic data to scroll through?
+static bool can_scroll_logic(DeviceAgent *agent, SigSession *session)
+{
+    return agent->have_instance()
+        && agent->get_work_mode() == LOGIC
+        && session->have_view_data()
+        && session->cur_snap_samplerate() > 0;
+}
+
+void View::scroll_to_begin()
+{
+    if (!can_scroll_logic(_device_agent, _session))
+        return;
+
+    set_scale_offset(_scale, get_min_offset());
+}
+
+void View::scroll_to_trigger()
+{
+    if (!can_scroll_logic(_device_agent, _session))
+        return;
+
+    // The time ruler counts from this position, and the trigger flag is
+    // drawn here.
+    const double time = _session->get_trigger_pos() * 1.0 / _session->cur_snap_samplerate();
+    set_scale_offset(_scale, (int64_t)floor(time / _scale) - get_view_width() / 2);
+}
+
+void View::scroll_to_end()
+{
+    if (!can_scroll_logic(_device_agent, _session))
+        return;
+
+    // The data received so far: less than the sample depth if the capture
+    // was stopped early or is still running.
+    set_scale_offset(_scale, get_logic_lst_data_offset());
+}
+
 double View::get_trace_font_scale()
 {
     // Vertical scaling only applies to the logic trace window (see vzoom()).
     if (_device_agent->have_instance() && _device_agent->get_work_mode() == LOGIC)
-        return _trace_height_factor;
+        return (_trace_height_factor < 1.0) ? _text_scale : _trace_height_factor;
     return 1.0;
 }
 
@@ -758,21 +866,8 @@ void View::update_scroll()
 
 void View::on_v_scroll_released()
 {
-    snap_v_scroll();
-}
-
-bool View::v_snap_enabled()
-{
-    return _device_agent->have_instance()
-        && _device_agent->get_work_mode() == LOGIC
-        && AppConfig::Instance().appOptions.logicSnapVScroll;
-}
-
-void View::snap_v_scroll()
-{
-    _v_snap_timer.stop();
-
-    if (v_snap_enabled() == false)
+    if (_device_agent->have_instance() == false
+        || _device_agent->get_work_mode() != LOGIC)
         return;
 
     const int value = verticalScrollBar()->value();
@@ -780,33 +875,6 @@ void View::snap_v_scroll()
 
     if (snapped != value)
         verticalScrollBar()->setValue(snapped);
-}
-
-void View::scroll_v_by_wheel(int delta)
-{
-    QScrollBar *bar = verticalScrollBar();
-    const int from = bar->value();
-    const int target = min(max(from - delta, bar->minimum()), bar->maximum());
-
-    if (v_snap_enabled() == false) {
-        bar->setValue(target);
-        return;
-    }
-
-    // A mouse wheel detent usually covers several channels; snapping each
-    // one keeps every channel on screen whole. Steps smaller than a channel
-    // (touchpads, high resolution wheels) would jump a whole channel each if
-    // snapped one by one, so they scroll freely and snap when they stop.
-    const int pitch = (int)_signalHeight + 2 * get_signal_margin();
-
-    if (qAbs(delta) >= pitch) {
-        _v_snap_timer.stop();
-        bar->setValue(snap_v_offset(target, from));
-    }
-    else {
-        bar->setValue(target);
-        _v_snap_timer.start();
-    }
 }
 
 void View::update_scale_offset()
@@ -845,6 +913,10 @@ void View::mode_changed()
 
 void View::signals_changed(const Trace* eventTrace)
 {
+    // Normal gaps between channels; zoomed out below normal size (logic
+    // mode) they shrink, see below.
+    s_margin_scale = 1.0;
+
     double actualMargin = get_signal_margin();
     int total_rows = 0;
     int label_size = 0;
@@ -856,13 +928,6 @@ void View::signals_changed(const Trace* eventTrace)
     std::vector<Trace*> decoder_traces;
 
     (void)eventTrace;
-
-    // The relayout below places every trace as if the time pane were not
-    // scrolled. Remember where it was scrolled to, so that it can be put back
-    // afterwards instead of jumping to the top on every resize.
-    const QScrollBar *vbar = verticalScrollBar();
-    const int old_v_scroll = vbar->value();
-    const int old_v_content = vbar->maximum() + vbar->pageStep();
 
     get_traces(ALL_VIEW, traces);
 
@@ -952,8 +1017,17 @@ void View::signals_changed(const Trace* eventTrace)
             // in-trace text (e.g. decoder annotations) is not cut off.
             QFont trace_font;
             trace_font.setPointSizeF(AppConfig::Instance().GetTraceFontSize());
-            const int min_row_height = max((int)HeightUnit,
-                                           QFontMetrics(trace_font).height() + 4);
+            int min_row_height = max((int)HeightUnit,
+                                     QFontMetrics(trace_font).height() + 4);
+            const int text_row_height = QFontMetrics(trace_font).height() + 4;
+            // Row height at normal size, before any shrinking below it.
+            const int full_row_height = min_row_height;
+
+            // Below normal size the text shrinks with the zoom (and is hidden
+            // once unreadable), so the rows may shrink too.
+            if (_trace_height_factor < 1.0)
+                min_row_height = max((int)MinRowHeight,
+                                     (int)ceil(min_row_height * _trace_height_factor));
 
             ret = _device_agent->get_config_byte(SR_CONF_MAX_HEIGHT_VALUE, v);
             if (ret) {
@@ -961,16 +1035,67 @@ void View::signals_changed(const Trace* eventTrace)
             }
             if (height < 2*actualMargin) {
                 //actualMargin /= 2;
-                _signalHeight = max((double)min_row_height, (_time_viewport->height()
+                _signalHeight = max((double)full_row_height, (_time_viewport->height()
                                           - 2 * actualMargin * label_size) * 1.0 / total_rows);
             }
             else {
-                _signalHeight = max((double)min_row_height, (height >= max_height) ? max_height : height);
+                _signalHeight = max((double)full_row_height, (height >= max_height) ? max_height : height);
             }
 
             // Apply the user-controlled vertical scaling so logic signals can
             // grow to use the full window height (see View::vzoom).
-            _signalHeight = max((double)min_row_height, _signalHeight * _trace_height_factor);
+            if (_trace_height_factor < 1.0) {
+                // Zoomed out below normal size, so many channels fit one
+                // window: the row pitch shrinks with the factor, taken from
+                // the gaps between channels first. The rows, and the text in
+                // them, keep their size for as long as possible.
+                const bool divider = AppConfig::Instance().appOptions.logicChannelDivider;
+                const double base_margin = actualMargin;
+                const double base_pitch = _signalHeight + 2 * base_margin;
+                const double pitch = base_pitch * _trace_height_factor;
+                const double min_margin = max(divider ? 2.0 : 1.0, round(base_margin / 4));
+                const double margin = max(min_margin, base_margin - (base_pitch - pitch) / 2);
+                s_margin_scale = margin / base_margin;
+                actualMargin = get_signal_margin();
+                _signalHeight = max((double)min_row_height, pitch - 2 * actualMargin);
+            }
+            else {
+                _signalHeight = max((double)min_row_height, _signalHeight * _trace_height_factor);
+            }
+
+            // Round the row pitch so a whole number of rows tiles the pane
+            // exactly. Otherwise the pane height is an arbitrary multiple of
+            // the pitch and the unscrolled view ends on a trace that is cut
+            // off at the bottom edge. Fewer rows means taller ones, so walk
+            // down from the closest fit until they clear min_row_height - the
+            // nearest pitch is often a shrink the font minimum forbids. Below
+            // two rows the correction would be big enough to fight vzoom, so
+            // leave it alone there.
+            const double pane_height = get_time_pane_height() - actualMargin;
+            const double pitch = _signalHeight + 2 * actualMargin;
+
+            if (pane_height > 0 && pitch > 0)
+            {
+                for (int rows = (int)qRound(pane_height / pitch); rows >= 2; rows--)
+                {
+                    // Whole-pixel pitch: set_totalHeight() truncates to int,
+                    // so a fractional one would not tile exactly anyway.
+                    const double fitted = floor(pane_height / rows) - 2 * actualMargin;
+
+                    if (fitted >= min_row_height){
+                        _signalHeight = fitted;
+                        break;
+                    }
+                }
+            }
+
+            // Text keeps its full size while the rows still have room for
+            // it, and only then shrinks with them: a fitted view keeps its
+            // labels for as long as they can be read.
+            _text_scale = 1.0;
+            if (_trace_height_factor < 1.0 && text_row_height > 0)
+                _text_scale = max(_trace_height_factor,
+                                  min(1.0, _signalHeight * 1.0 / text_row_height));
         }
         else if (_device_agent->get_work_mode() == DSO) {
             // Size the channels to the pane they actually live in. Using the
@@ -1018,6 +1143,11 @@ void View::signals_changed(const Trace* eventTrace)
             for(auto t : all_traces){
                 time_traces.push_back(t);
             }
+
+            // Pinned decoders go first, keeping their order, so they form
+            // the band at the top that does not scroll.
+            std::stable_partition(time_traces.begin(), time_traces.end(),
+                                  [](Trace *t) { return t->pinned(); });
         }
 
         for(auto t : time_traces) {
@@ -1057,35 +1187,10 @@ void View::signals_changed(const Trace* eventTrace)
         _session->update_dso_data_scale();
     }
 
-    // header_updated() sets the scroll range for the new layout. Scale the
-    // old position by the change in content height, so the same traces stay
-    // at the top when row heights follow the pane height, and the position
-    // is unchanged when they don't. Qt clamps it to the new range.
     header_updated();
-    restore_v_scroll(old_v_scroll, old_v_content);
+    normalize_layout();
     update_scale_offset();
     data_updated();
-}
-
-void View::restore_v_scroll(int old_value, int old_content)
-{
-    QScrollBar *vbar = verticalScrollBar();
-    int value = 0;
-
-    if (old_value > 0 && old_content > 0 && vbar->maximum() > 0) {
-        const int new_content = vbar->maximum() + vbar->pageStep();
-        value = qRound(old_value * (double)new_content / old_content);
-
-        // Scaling can land partway into a channel. Put it back on a
-        // channel boundary, as a scroll would.
-        if (v_snap_enabled())
-            value = snap_v_offset(min(value, vbar->maximum()));
-    }
-
-    vbar->setValue(value);
-    // setValue() emits nothing if the value is unchanged, but the relayout
-    // has reset each trace to its unscrolled offset.
-    v_scroll_value_changed(vbar->value());
 }
 
 bool View::eventFilter(QObject *object, QEvent *event)
@@ -1176,9 +1281,7 @@ void View::resizeEvent(QResizeEvent*)
     reconstruct();
     setViewportMargins(headerWidth(), RulerHeight, 0, get_bottom_margin());
     update_margins();
-    // No update_scroll() here: it would clamp the scroll position against
-    // the new pane height with the old trace heights. signals_changed()
-    // updates the scroll bars after relaying out the traces.
+    update_scroll();
     signals_changed(NULL);
 
     if (_device_agent->get_work_mode() == DSO){
@@ -1225,14 +1328,6 @@ void View::h_scroll_value_changed(int value)
     }
 }
 
-int View::get_time_pane_height()
-{
-    const int height = (_fft_viewport->isVisible()
-        ? _time_viewport->height() : get_view_height()) - get_status_overlap();
-
-    return max(height, 0);
-}
-
 int View::get_status_overlap()
 {
     // The status bar is not inside the scroll area's viewport, it floats over
@@ -1246,42 +1341,49 @@ int View::get_status_overlap()
     return max(_viewcenter->y() + _viewcenter->height() - _viewbottom->y(), 0);
 }
 
-int View::snap_v_offset(int value, int from)
+int View::get_time_pane_height()
 {
-    const int max_value = verticalScrollBar()->maximum();
+    const int height = (_fft_viewport->isVisible()
+        ? _time_viewport->height() : get_view_height()) - get_status_overlap();
 
-    if (max_value <= 0)
-        return 0;
+    return max(height, 0);
+}
+
+int View::snap_v_offset(int value)
+{
+    const int pane_height = get_time_pane_height();
+
+    if (pane_height <= 0)
+        return value;
 
     const int margin = get_signal_margin();
+    const int max_value = verticalScrollBar()->maximum();
 
     std::vector<Trace*> traces;
     get_traces(TIME_VIEW, traces);
 
-    // Scroll positions at which the pane's top edge coincides with the start
-    // of a trace band, i.e. the trace's own top margin is the first thing
-    // shown. Aligning the bottom edge instead (as for a status bar painting
-    // over the pane) leaves the top edge partway into a band as soon as the
-    // bands differ in height, e.g. with decoder traces, and slices off the
-    // high level of the topmost trace. The end of the range stays a stop so
-    // the last trace can still be reached.
+    // Scroll positions at which the pane's bottom edge coincides with the end
+    // of a trace band. 0 is always one of them: the row pitch is fitted to the
+    // pane (see signals_changed) so the unscrolled view ends on a boundary.
     std::vector<int> stops;
     stops.push_back(0);
-    stops.push_back(max_value);
 
     for (auto t : traces)
     {
         if (t->enabled() == false || t->get_totalHeight() == 0)
             continue;
 
-        const int band_top = t->get_v_offset_orig()
-                             - t->get_totalHeight() / 2 - margin;
+        const int band_bottom = t->get_v_offset_orig()
+                                + t->get_totalHeight() / 2 + margin;
 
-        if (band_top > 0 && band_top < max_value)
-            stops.push_back(band_top);
+        stops.push_back(min(max(band_bottom - pane_height, 0), max_value));
     }
 
     sort(stops.begin(), stops.end());
+    stops.erase(unique(stops.begin(), stops.end()), stops.end());
+
+    if (stops.size() < 2)
+        return min(max(value, 0), max_value);
 
     int best = stops.front();
 
@@ -1290,21 +1392,24 @@ int View::snap_v_offset(int value, int from)
             best = stop;
     }
 
-    // Never undo a step: if the nearest stop is not past the starting
-    // position, take the first one that is.
-    if (from >= 0 && value > from && best <= from) {
-        for (auto stop : stops) {
-            if (stop > from) {
-                best = stop;
-                break;
+    // Always make progress in the direction of travel, otherwise a wheel step
+    // shorter than half a row would snap straight back to where it started.
+    if (best == _y_offset && value != _y_offset)
+    {
+        if (value > _y_offset) {
+            for (auto stop : stops) {
+                if (stop > _y_offset) {
+                    best = stop;
+                    break;
+                }
             }
         }
-    }
-    else if (from >= 0 && value < from && best >= from) {
-        for (auto it = stops.rbegin(); it != stops.rend(); ++it) {
-            if (*it < from) {
-                best = *it;
-                break;
+        else {
+            for (auto it = stops.rbegin(); it != stops.rend(); ++it) {
+                if (*it < _y_offset) {
+                    best = *it;
+                    break;
+                }
             }
         }
     }
@@ -1314,6 +1419,27 @@ int View::snap_v_offset(int value, int from)
 
 void View::v_scroll_value_changed(int value)
 {
+    // Keep the bottom of the pane on a trace boundary so the lowest trace is
+    // never shown sliced. Only LOGIC stacks rows this way; DSO sizes its
+    // channels to the pane and ANALOG is left alone. While the slider is held
+    // the snap is deferred to on_v_scroll_released(): moving the slider on
+    // every valueChanged pulls it out from under the pointer, and the drag
+    // then chases it around.
+    if (_snapping_v_scroll == false
+        && verticalScrollBar()->isSliderDown() == false
+        && _device_agent->have_instance()
+        && _device_agent->get_work_mode() == LOGIC)
+    {
+        const int snapped = snap_v_offset(value);
+
+        if (snapped != value) {
+            _snapping_v_scroll = true;
+            verticalScrollBar()->setValue(snapped);
+            _snapping_v_scroll = false;
+            value = snapped;
+        }
+    }
+
     // Track vertical offset
     _y_offset = value;
 
@@ -1324,14 +1450,55 @@ void View::v_scroll_value_changed(int value)
     std::vector<Trace*> traces;
     get_traces(TIME_VIEW, traces);
 
+    const bool logic = _device_agent->have_instance()
+                       && _device_agent->get_work_mode() == LOGIC;
+
     for (auto t : traces) {
         if (t->enabled()) {
-            t->update_v_scroll(-value);
+            // Pinned decoders stay at the top while the rest scrolls.
+            t->update_v_scroll((logic && t->pinned()) ? 0 : -value);
         }
     }
 
     _header->update();
     viewport_update();
+}
+
+int View::pinned_band_bottom()
+{
+    if (_device_agent->have_instance() == false
+        || _device_agent->get_work_mode() != LOGIC)
+        return 0;
+
+    std::vector<Trace*> traces;
+    get_traces(TIME_VIEW, traces);
+
+    int bottom = 0;
+    for (auto t : traces) {
+        if (!t->pinned() || !t->enabled() || t->get_totalHeight() == 0)
+            continue;
+        bottom = max(bottom, t->get_v_offset_orig() + t->get_totalHeight() / 2
+                             + get_signal_margin());
+    }
+    return bottom;
+}
+
+bool View::trace_covered(Trace *t, int y)
+{
+    if (t->pinned())
+        return false;
+    const int band = pinned_band_bottom();
+    return band > 0 && y < band;
+}
+
+void View::set_trace_pinned(Trace *t, bool pinned)
+{
+    if (t->pinned() == pinned)
+        return;
+    t->set_pinned(pinned);
+    signals_changed(t);
+    set_all_update(true);
+    _header->update();
 }
 
 void View::data_updated()

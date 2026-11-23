@@ -61,6 +61,7 @@ Trace::Trace(QString name, uint16_t index, int type) :
 {
     _index_list.push_back(index);
     _view_index = -1;
+    _pinned = false;
 }
 
 Trace::Trace(QString name, std::list<int> index_list, int type, int sec_index) :
@@ -75,6 +76,7 @@ Trace::Trace(QString name, std::list<int> index_list, int type, int sec_index) :
     _typeWidth(SquareNum)
 {
     _view_index = -1;
+    _pinned = false;
 }
 
 Trace::Trace(const Trace &t) :
@@ -92,6 +94,7 @@ Trace::Trace(const Trace &t) :
     _text_size(t._text_size)
 {
     _view_index = -1;
+    _pinned = false;
 }
 
 
@@ -207,6 +210,15 @@ QColor Trace::get_default_colour()
         _type == SR_CHANNEL_ANALOG || _type == SR_CHANNEL_MATH || _index_list.empty())
         return QColor();
 
+    // Channels feeding a decoder's bus (e.g. A0-A15) take the colour of
+    // the decoded data, so each group reads as one.
+    if (_type == SR_CHANNEL_LOGIC && _view != NULL &&
+        AppConfig::Instance().appOptions.decoderChannelColours) {
+        QColor colour = _view->session().get_decoder_channel_colour(_index_list.front());
+        if (colour.isValid())
+            return colour;
+    }
+
     return PROBE_COLORS[*_index_list.begin() % countof(PROBE_COLORS)];
 }
 
@@ -247,6 +259,8 @@ void Trace::paint_label(QPainter &p, int right, const QPoint pt, QColor fore)
 
     compute_text_size(p);
     const int y = get_y();
+    // Text too small to read is left out rather than overlapping neighbours.
+    const bool text_shown = (_view == NULL) || _view->trace_text_shown();
 
     const QRectF color_rect = get_rect("color", y, right);
     const QRectF name_rect  = get_rect("name",  y, right);
@@ -263,13 +277,15 @@ void Trace::paint_label(QPainter &p, int right, const QPoint pt, QColor fore)
     if (_type == SR_CHANNEL_DSO ||
         _type == SR_CHANNEL_MATH) {
         p.setPen(enabled() ?  Qt::white: foreBack);
-        p.drawText(color_rect, Qt::AlignCenter | Qt::AlignVCenter, _name);
+        if (text_shown)
+            p.drawText(color_rect, Qt::AlignCenter | Qt::AlignVCenter, _name);
     }
 
     if (_type != SR_CHANNEL_DSO) {
         // Paint the signal name
         p.setPen(enabled() ?  fore: foreBack);
-        p.drawText(name_rect, Qt::AlignLeft | Qt::AlignVCenter, _name);
+        if (text_shown)
+            p.drawText(name_rect, Qt::AlignLeft | Qt::AlignVCenter, _name);
     }
 
     // Paint the trigButton
@@ -327,7 +343,9 @@ void Trace::paint_label(QPainter &p, int right, const QPoint pt, QColor fore)
 
         // Paint the text
         p.setPen(Qt::white);
-        if (_type == SR_CHANNEL_GROUP)
+        if (!text_shown)
+            ;
+        else if (_type == SR_CHANNEL_GROUP)
             p.drawText(label_rect, Qt::AlignCenter | Qt::AlignVCenter, "G");
         else if (_type == SR_CHANNEL_DECODER)
             p.drawText(label_rect, Qt::AlignCenter | Qt::AlignVCenter, "D");

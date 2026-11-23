@@ -194,5 +194,41 @@
     {
         "id": "IDS_TOOLBAR_HELP_LOG",
         "text": "日志选项(&L)"
+    },
+    {
+        "id": "IDS_TOOLBAR_FIT_VERTICAL",
+        "text": "适应"
+    },
+    {
+        "id": "IDS_TOOLBAR_FIT_VERTICAL_TIP",
+        "text": "缩小所有通道以适应窗口"
+    },
+    {
+        "id": "IDS_TOOLBAR_DSO_SPLIT",
+        "text": "分屏"
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_BEGIN",
+        "text": "开头"
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_BEGIN_TIP",
+        "text": "跳到采集开头，保持缩放"
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_TRIG",
+        "text": "触发点"
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_TRIG_TIP",
+        "text": "以触发位置为中心显示，保持缩放"
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_END",
+        "text": "结尾"
+    },
+    {
+        "id": "IDS_TOOLBAR_GO_END_TIP",
+        "text": "跳到采集结尾，保持缩放"
     }
 ]

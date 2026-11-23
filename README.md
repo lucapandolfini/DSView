@@ -1,14 +1,30 @@
 ![DreamSourceLab Logo](DSView/icons/dsl_logo.svg)
 
+# This re-fork
+
+This is [lucapandolfini/DSView](https://github.com/lucapandolfini/DSView). Its history:
+
+1. Forked from [mrehkopf/DSView](https://github.com/mrehkopf/DSView).
+2. Fork by Schildkroet: [Schildkroet/DSView](https://github.com/Schildkroet/DSView). Its
+   additions are described in [Changes in the Schildkroet fork](#changes-in-the-schildkroet-fork)
+   below.
+3. Re-forked by lucapandolfini from the Schildkroet fork: this repository.
+
+**What this re-fork changes is in [CHANGELOG.md](CHANGELOG.md)**: every difference from the
+Schildkroet fork, with before/after screenshots. Among them: high/low trace colours, the Fit,
+Begin, Trig Pos and End buttons, decoders pinned on top, a decoder search that works across all
+columns, a 65C02 decoder, and `make deb` / `make uninstall`. The fix revision shown in the
+window title and in the About window (e.g. "v1.6.1-Fix-v16") identifies the release of this tree.
+
 # DSView
 
 DSView is a GUI program for supporting various instruments from [DreamSourceLab](http://www.dreamsourcelab.com), including logic analyzers, oscilloscopes, etc. DSView is based on the [sigrok project](https://sigrok.org).
 
 The sigrok project aims at creating a portable, cross-platform, Free/Libre/Open-Source signal analysis software suite that supports various device types (such as logic analyzers, oscilloscopes, multimeters, and more).
 
-# Changes in this fork
+# Changes in the Schildkroet fork
 
-This fork tracks upstream DSView and adds the following.
+The Schildkroet fork tracks upstream DSView and adds the following.
 
 ## Oscilloscope
 

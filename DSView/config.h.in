@@ -32,4 +32,8 @@
 #define DS_VERSION_MICRO @DS_VERSION_MICRO@
 #define DS_VERSION_STRING "@DS_VERSION_STRING@"
 
+/* Version with this tree's fix revision, for the title and About dialog */
+#define DS_FIX_REVISION @DS_FIX_REVISION@
+#define DS_DISPLAY_VERSION "@DS_DISPLAY_VERSION@"
+
 #endif

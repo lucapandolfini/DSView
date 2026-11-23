@@ -277,7 +277,7 @@ namespace pv
             }
             case SR_ERR_FIRMWARE_NOT_EXIST:{
                 QString strMsg = L_S(STR_PAGE_MSG, S_ID(IDS_MSG_FIRMWARE_NOT_EXIST), 
-                    "Firmware not exist!");
+                    "Error: Firmware file does not exist!");
                 _callback->delay_prop_msg(strMsg);
                 ret = false;
                 break;
@@ -1654,6 +1654,9 @@ namespace pv
 
             sub_decoders.clear();
 
+            // A decoder can ask to be shown above the channels.
+            trace->set_pinned(trace->pin_on_top_default());
+
             // set view early for decode start/end region setting
             for (auto s : _signals)
             {
@@ -2637,9 +2640,20 @@ namespace pv
     void SigSession::set_decoder_row_label(int index, QString label)
     {
         auto trace = get_decoder_trace(index);
-        if (trace != NULL){
+        // A decoder with a fixed label keeps its own name.
+        if (trace != NULL && !trace->has_fixed_label()){
             set_trace_name(trace, label);
         }
+    }
+
+    QColor SigSession::get_decoder_channel_colour(int index)
+    {
+        QColor colour;
+        for (auto t : _decode_traces){
+            if (t->get_channel_colour(index, colour))
+                return colour;
+        }
+        return QColor();
     }
 
     void SigSession::set_trace_colour(view::Trace *trace, QColor colour) {

@@ -70,6 +70,10 @@ signals:
     void sig_search(bool visible);
     void sig_show_lissajous(bool visible);
     void sig_dso_split(bool split); //split each DSO channel into its own row
+    void sig_fit_vertical(); //fit all logic traces to the window height
+    void sig_go_begin();     //scroll to the first sample, keeping the zoom
+    void sig_go_trigger();   //center the trigger position, keeping the zoom
+    void sig_go_end();       //scroll to the last sample, keeping the zoom
 
 private slots:
     void on_actionDark_triggered();
@@ -90,6 +94,7 @@ public slots:
     void measure_clicked();
     void search_clicked();
     void dso_split_clicked();
+    void vfit_clicked();
 
 private:
     SigSession  *_session;
@@ -101,6 +106,10 @@ private:
     XToolButton _function_button;
     XToolButton _setting_button;
     XToolButton _dso_split_button;
+    XToolButton _vfit_button;
+    XToolButton _go_begin_button;
+    XToolButton _go_trig_button;
+    XToolButton _go_end_button;
     QAction     *_trig_action;
     QAction     *_protocol_action;
     QAction     *_measure_action;
@@ -108,6 +117,10 @@ private:
     QAction     *_function_action;
     QAction     *_display_action;
     QAction     *_dso_split_action;
+    QAction     *_vfit_action;
+    QAction     *_go_begin_action;
+    QAction     *_go_trig_action;
+    QAction     *_go_end_action;
 
     QMenu       *_function_menu;
     QAction     *_action_fft;
@@ -124,6 +137,7 @@ private:
     QAction     *_latte_style;
     QAction     *_frappe_style;
     QAction     *_action_lissajous;
+    QAction     *_action_vfit; // Display menu twin of the Fit button
 };
 
 } // namespace toolbars

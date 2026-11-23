@@ -80,6 +80,8 @@ public:
     static const double MinorDragRateUp;
     static const double DragDamping;
     static const int SnapMinSpace = 10;
+    // A right-button drag shorter than this is a click, not a zoom.
+    static const int ClickMaxDrag = 2;
     static const int WaitLoopTime = 400;
     static const int MousePointerClearance = 25;
     static const int MouseEdgeClearance = 3;
@@ -155,9 +157,31 @@ private:
     void paintSignals(QPainter& p, QColor fore, QColor back);
     void paintProgress(QPainter& p, QColor fore, QColor back);
     void paintMeasure(QPainter &p, QColor fore, QColor back);
+
+    // One line of a measurement balloon: label, value, and an optional
+    // dimmed third column (a sample count).
+    struct MeasureRow {
+        QString label;
+        QString value;
+        QString extra;
+        QColor  colour;
+    };
+    // The floating measurement's balloon beside the mouse, shared by the
+    // manual measurements (edge count, edge to edge) so they all look alike.
+    void paintMeasureBalloon(QPainter &p, QColor fore, QColor back,
+                             const std::vector<MeasureRow> &rows);
+
     void paintCursors(QPainter &p);
     void paint_ref_waves(QPainter &p);
     void paintYScaleBadge(QPainter &p, QColor fore, QColor back);
+    void paintHoverLine(QPainter &p, QColor fore);
+    void paintHoverRow(QPainter &p, QColor fore);
+    void paintCursorBands(QPainter &p);
+    void paintCursorDeltas(QPainter &p, QColor fore, QColor back);
+    void paintTriggerLine(QPainter &p, const QRect &rect);
+    void paintPinnedBandEdge(QPainter &p, QColor fore, int band);
+    void clipToTraceBand(QPainter &p, Trace *t, int band);
+    bool show_annotation_menu(const QPoint &pos);
 
     // Briefly show the y-scale badge (logic mode) after a vertical zoom.
     void flash_yscale_badge();
@@ -181,6 +205,7 @@ private slots:
     void add_cursor_y();
     void reset_yscale();
     void on_yscale_hint_timeout();
+    void on_hover_point_changed();
 
 signals:
     void measure_updated();
@@ -242,9 +267,6 @@ private:
     uint64_t    _edge_falling;
     uint64_t    _edge_start;
     uint64_t    _edge_end;
-    QString     _em_rising;
-    QString     _em_falling;
-    QString     _em_edges;
 
     QTimer      _trigger_timer;
     bool        _is_checked_trig;

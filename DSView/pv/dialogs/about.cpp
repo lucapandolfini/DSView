@@ -68,12 +68,24 @@ About::About(QWidget *parent) :
 
     QString url = tr("Website: <a href=\"%1\" style=\"color:#C0C0C0\">%1</a><br />"
                      "Copyright: <label href=\"#\" style=\"color:#C0C0C0\">%2</label><br />"
-                     "<br />"
-                     "Fork by Schildkroet: <a href=\"%3\" style=\"color:#C0C0C0\">%3</a><br />"
-                     "<br /><br />")
+                     "<br />")
                   .arg(site_url)
-                  .arg(tr("© DreamSourceLab. All rights reserved."))
-                  .arg("https://github.com/Schildkroet/DSView");
+                  .arg(tr("© DreamSourceLab. All rights reserved."));
+
+    // Where this tree comes from, oldest first
+    auto history_line = [](const QString &label, const QString &link) {
+        return QString("%1 <a href=\"%2\" style=\"color:#C0C0C0\">%2</a><br />")
+                    .arg(label.toHtmlEscaped(), link);
+    };
+    url += history_line(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_ABOUT_FORKED_FROM), "Forked from:"),
+                        "https://github.com/mrehkopf/DSView");
+    url += history_line(QString(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_ABOUT_FORK_BY), "Fork by %1:"))
+                            .arg("Schildkroet"),
+                        "https://github.com/Schildkroet/DSView");
+    url += history_line(QString(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_ABOUT_REFORKED_BY), "Re-forked by %1:"))
+                            .arg("lucapandolfini"),
+                        "https://github.com/lucapandolfini/DSView");
+    url += "<br /><br />";
 
     QString thanks = tr("<font size=16>Special Thanks</font><br />"
                         "<a href=\"%1\" style=\"color:#C0C0C0\">All backers on kickstarter</a><br />"

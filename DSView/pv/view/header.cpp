@@ -98,25 +98,6 @@ int Header::get_nameEditWidth()
         return 0;
 }
 
-// Traces are deleted when the session rebuilds them, for example after a
-// device option or stacking change, while the trace whose name was edited
-// last could still be remembered here
-pv::view::Trace* Header::live_context_trace()
-{
-    if (_context_trace == NULL)
-        return NULL;
-
-    std::vector<Trace*> traces;
-    _view.get_traces(ALL_VIEW, traces);
-    for (auto t : traces){
-        if (t == _context_trace)
-            return t;
-    }
-
-    _context_trace = NULL;
-    return NULL;
-}
-
 pv::view::Trace* Header::get_mTrace(int &action, const QPoint &pt)
 {
     const int w = width();
@@ -125,11 +106,31 @@ pv::view::Trace* Header::get_mTrace(int &action, const QPoint &pt)
 
     for(auto t : traces)
     {
+        if (_view.trace_covered(t, pt.y()))
+            continue;
         if ((action = t->pt_in_rect(t->get_y(), w, pt)))
             return t;
     }
 
+    action = 0;
     return NULL;
+}
+
+// A small pushpin, drawn after the name of a pinned decoder.
+static void paint_pin_icon(QPainter &p, QPointF c, double size, QColor colour)
+{
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.translate(c);
+    p.rotate(35);
+    const double s = size / 12.0;
+    p.setPen(Qt::NoPen);
+    p.setBrush(colour);
+    p.drawRoundedRect(QRectF(-3 * s, -6 * s, 6 * s, 5 * s), 1 * s, 1 * s); // head
+    p.drawRect(QRectF(-4.5 * s, -1.5 * s, 9 * s, 1.5 * s));                // collar
+    p.setPen(QPen(colour, std::max(1.0, 1.2 * s)));
+    p.drawLine(QPointF(0, 0), QPointF(0, 6 * s));                           // needle
+    p.restore();
 }
 
 void Header::paintEvent(QPaintEvent*)
@@ -160,10 +161,38 @@ void Header::paintEvent(QPaintEvent*)
     font.setPointSizeF(fSize);
     painter.setFont(font);
 
+    // Pinned decoders own the band at the top; other labels scroll under it.
+    const int pinned_band = _view.pinned_band_bottom();
+
     for(auto t : traces)
 	{
+        painter.save();
+        // (The band exists in logic mode only, where every trace is in the time pane.)
+        if (pinned_band > 0) {
+            if (t->pinned())
+                painter.setClipRect(0, 0, w, pinned_band);
+            else
+                painter.setClipRect(0, pinned_band, w, std::max(height() - pinned_band, 0));
+        }
+        const double name_w = painter.fontMetrics().boundingRect(t->get_name()).width();
         t->paint_label(painter, w, dragging ? QPoint(-1, -1) : _mouse_point, fore);
+
+        if (t->pinned() && t->enabled()) {
+            // Just after the name, in the (dotted) space before the channel numbers.
+            const QRectF name_rect = t->get_rect("name", t->get_y(), w);
+            const double size = std::min(14.0, name_rect.height() * 0.7);
+            const double x = std::min(name_rect.left() + name_w + size * 0.9, w * 0.6);
+            paint_pin_icon(painter, QPointF(x, t->get_y()), size, fore);
+        }
+        painter.restore();
 	}
+
+    if (pinned_band > 0) {
+        QColor edge(fore);
+        edge.setAlpha(150);
+        painter.setPen(QPen(edge, 1));
+        painter.drawLine(0, pinned_band - 1, w, pinned_band - 1);
+    }
 
 	painter.end();
 }
@@ -188,6 +217,8 @@ void Header::mouseDoubleClickEvent(QMouseEvent *event)
 
         // Select the Trace if it has been clicked
         for(auto t : traces){
+            if (_view.trace_covered(t, event->pos().y()))
+                continue;
             if (t->mouse_double_click(width(), event->pos()))
                 break;
         }
@@ -243,6 +274,8 @@ void Header::mousePressEvent(QMouseEvent *event)
                 // Disable set trigger from left pannel when capturing.
                 break;
             }
+            if (_view.trace_covered(t, event->pos().y()))
+                continue;
             if (t->mouse_press(width(), event->pos()))
                 break;
         }
@@ -405,13 +438,18 @@ void Header::wheelEvent(QWheelEvent *event)
                     break;
             }
         }
-        _view.scroll_v_by_wheel(delta);
+        _view.verticalScrollBar()->setValue(_view.verticalScrollBar()->value() - delta);
         update();
     }
 }
 
 void Header::changeName(QMouseEvent *event)
 {
+    // A decoder with a fixed label can't be renamed.
+    if (_context_trace != NULL && _context_trace->get_type() == SR_CHANNEL_DECODER
+        && static_cast<DecodeTrace*>(_context_trace)->has_fixed_label())
+        return;
+
     if (_context_trace != NULL
         && _context_trace->get_type() != SR_CHANNEL_DSO
         && event->button() == Qt::LeftButton) 
@@ -420,7 +458,7 @@ void Header::changeName(QMouseEvent *event)
         QFont font = this->font();
         float fsize = AppConfig::Instance().GetTraceFontSize();
         // Match the scaled label font used when painting the channel name.
-        fsize *= _context_trace->get_label_scale();
+        fsize *= std::max(1.0, _context_trace->get_label_scale());
         font.setPointSizeF(fsize);
         nameEdit->setFont(font);
 
@@ -441,12 +479,9 @@ void Header::changeColor(QMouseEvent *event)
 
     if ((event->button() == Qt::LeftButton)) {
         const QColor new_color = QColorDialog::getColor(_context_trace->get_colour(), this, L_S(STR_PAGE_DLG, S_ID(IDS_DLG_SET_CHANNEL_COLOUR), "Set Channel Colour"));
-        Trace *trace = live_context_trace();
-        if (new_color.isValid() && trace != NULL)
-            trace->set_colour(new_color);
+        if (new_color.isValid())
+            _context_trace->set_colour(new_color);
     }
-
-    _context_trace = NULL;
 }
 
 void Header::mouseMoveEvent(QMouseEvent *event)
@@ -515,23 +550,41 @@ void Header::leaveEvent(QEvent*)
 
 void Header::contextMenuEvent(QContextMenuEvent *event)
 {
-    (void)event;
-
-    int action;
-
-    const auto t = get_mTrace(action, _mouse_point);
-
-    if (!t || !t->selected() || action != Trace::LABEL)
+    if (_view.session().get_device()->get_work_mode() != LOGIC)
         return;
+
+    // Right-click anywhere on a decoder's rows: pin it to the top or unpin it.
+    const int y = event->pos().y();
+    std::vector<Trace*> traces;
+    _view.get_traces(ALL_VIEW, traces);
+
+    Trace *decoder = NULL;
+    for (auto t : traces) {
+        if (t->get_type() != SR_CHANNEL_DECODER || !t->enabled()
+            || _view.trace_covered(t, y))
+            continue;
+        const int half = t->get_totalHeight() / 2 + View::get_signal_margin();
+        if (y >= t->get_y() - half && y < t->get_y() + half) {
+            decoder = t;
+            break;
+        }
+    }
+    if (decoder == NULL)
+        return;
+
+    QMenu menu(this);
+    QAction *pin = menu.addAction(decoder->pinned()
+        ? L_S(STR_PAGE_DLG, S_ID(IDS_DLG_UNPIN_DECODER), "Unpin")
+        : L_S(STR_PAGE_DLG, S_ID(IDS_DLG_PIN_DECODER), "Pin to top"));
+    if (menu.exec(event->globalPos()) == pin)
+        _view.set_trace_pinned(decoder, !decoder->pinned());
 }
 
 void Header::on_action_set_name_triggered()
 {
-    auto context_Trace = live_context_trace();
-    if (!context_Trace){
-        nameEdit->hide();
+    auto context_Trace = _context_trace;
+    if (!context_Trace)
 		return;
-    }
 
     if (nameEdit->isModified()) {
         QString v = nameEdit->text().trimmed();
@@ -542,16 +595,14 @@ void Header::on_action_set_name_triggered()
     }
 
     nameEdit->hide();
-    _context_trace = NULL;
     header_updated();
 }
 
 void Header::header_resize()
 {
-    Trace *trace = live_context_trace();
-    if (trace) {
-        const int y = trace->get_y();
-        nameEdit->move(QPoint(trace->get_leftWidth(), y - nameEdit->height() / 2));
+    if (_context_trace) {
+        const int y = _context_trace->get_y();
+        nameEdit->move(QPoint(_context_trace->get_leftWidth(), y - nameEdit->height() / 2));
     }
 }
 

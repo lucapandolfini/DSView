@@ -12,8 +12,8 @@ This is [lucapandolfini/DSView](https://github.com/lucapandolfini/DSView). Its h
 
 **What this re-fork changes is in [CHANGELOG.md](CHANGELOG.md)**: every difference from the
 Schildkroet fork, with before/after screenshots. Among them: high/low trace colours, the Fit,
-Begin, Trig Pos and End buttons, decoders pinned on top, a decoder search that works across all
-columns, a 65C02 decoder, and `make deb` / `make uninstall`. The fix revision shown in the
+Begin, Trig Pos and End buttons, decoders pinned on top, **a decoder search that works across all
+columns**, a *65C02 decoder*, and `make deb` / `make uninstall`. The fix revision shown in the
 window title and in the About window (e.g. "v1.6.1-Fix-v16") identifies the release of this tree.
 
 # DSView

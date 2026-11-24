@@ -107,6 +107,30 @@ pictures it was added to the fork's build.
 - **Time bar (whole capture, above the ruler)** in the Logic Analyzer
   group turns it off. It is on by default.
 
+### Delete data before or after a cursor
+- Right-click a cursor, logic mode only, for **Delete data before cursor n**
+  and **Delete data after cursor n**. A cursor can be right-clicked on its
+  label on the ruler, on its line over the waveform, or on its tick on the
+  time bar. DSView asks before deleting, as it cannot be undone.
+- The deleted part goes from memory. The timeline shrinks to the data that
+  stays, and the view stays on the same samples (zoomed in to fit, if it
+  showed more than is left).
+- The trigger, the other cursors and the search mark move with the data, so
+  the ruler reads the same times as before. A trigger in the deleted part is
+  removed, and the ruler then counts from the first sample. Cursors in the
+  deleted part are removed and the others renumbered.
+- The decoders run again over the data that stays. A decode region set in a
+  decoder's options moves with the data; if it was deleted, the decoder
+  covers all the data.
+- The cut falls on a whole word of 64 samples, as the data is kept in such
+  words and a Save with Start/End cursors also rounds to them. It is rounded
+  away from the cursor, so the cursor's sample always stays, along with up
+  to 63 samples on the deleted side.
+- Saving afterwards writes the shorter capture, with the trigger position
+  moved to match. A file opened from disk is not changed until it is saved.
+- Not available while a capture runs or while data is being saved: the
+  items are greyed out.
+
 ### Cursors
 - Cursor labels that would overlap are drawn compact (number only). The label
   under the mouse, or the one being dragged, expands on top of the others.

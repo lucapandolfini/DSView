@@ -46,6 +46,7 @@
 #include "view/mathtrace.h"
 
 #include <assert.h>
+#include <algorithm>
 #include <stdexcept>
 #include <sys/stat.h>
 #include <map>
@@ -407,6 +408,61 @@ namespace pv
     double SigSession::get_logic_data_view_time()
     {
         return _view_data->get_logic()->get_ring_sample_count() * 1.0 / cur_snap_samplerate();
+    }
+
+    bool SigSession::crop_logic_data(uint64_t &start, uint64_t &end)
+    {
+        if (_device_agent.have_instance() == false
+            || _device_agent.get_work_mode() != LOGIC
+            || is_working() || _is_saving || !have_view_data())
+            return false;
+
+        LogicSnapshot *logic = _view_data->get_logic();
+        const uint64_t count = logic->get_ring_sample_count();
+
+        start -= start % 64;
+        end = std::min(end, count);
+        if (end % 64 != 0)
+            end = std::min(end + 64 - end % 64, count);
+
+        if (start >= end || (start == 0 && end == count))
+            return false;
+
+        // The decoders read the data that is about to be replaced.
+        clear_all_decode_task2();
+
+        const bool cropped = logic->crop(start, end);
+
+        if (cropped)
+        {
+            const uint64_t kept = end - start;
+
+            // The timeline is the data kept.
+            _view_data->_cur_samplelimits = kept;
+            _capture_data->_cur_samplelimits = kept;
+
+            uint64_t &trig = _view_data->_trig_pos;
+            trig = (trig >= start && trig < end) ? trig - start : 0;
+        }
+
+        // Decode again, over what is there now.
+        clear_decode_result();
+
+        for (auto de : _decode_traces)
+        {
+            if (cropped)
+                de->crop_decode_region(start, end - start);
+
+            de->decoder()->set_capture_end_flag(true);
+            de->frame_ended();
+            add_decode_task(de);
+        }
+
+        if (cropped)
+            _callback->trigger_message(DSV_MSG_DATA_POOL_CHANGED);
+
+        data_updated();
+        return cropped;
     }
 
     double SigSession::cur_view_time()

@@ -1750,10 +1750,29 @@ void Viewport::onLogicMouseRelease(QMouseEvent *event)
         {
             const int drag = abs(event->pos().x() - _mouse_down_point.x());
             if (drag <= ClickMaxDrag) {
-                // A right click, not a zoom: offer to copy the annotation under the mouse.
+                // A right click, not a zoom. On a cursor: its menu (delete the
+                // data before or after it). Elsewhere: offer to copy the
+                // annotation under the mouse.
                 set_action(NO_ACTION);
-                if (event->button() == Qt::RightButton)
-                    show_annotation_menu(event->pos());
+                if (event->button() == Qt::RightButton) {
+                    Cursor *near = NULL;
+                    int64_t best = HitCursorMargin + 1;
+
+                    if (_view.cursors_shown()) {
+                        for (auto c : _view.get_cursorList()) {
+                            const int64_t d = qAbs((int64_t)_view.index2pixel(c->index()) - event->pos().x());
+                            if (d < best) {
+                                best = d;
+                                near = c;
+                            }
+                        }
+                    }
+
+                    if (near != NULL)
+                        _view.show_cursor_menu(near, QCursor::pos());
+                    else
+                        show_annotation_menu(event->pos());
+                }
                 break;
             }
             {

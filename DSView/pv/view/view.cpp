@@ -29,6 +29,7 @@
 #include <QMouseEvent>
 #include <QScrollBar>
 #include <QFontMetrics>
+#include <QMenu>
 #include <algorithm>
 
 #include "groupsignal.h"
@@ -53,6 +54,8 @@
 #include "../log.h"
 #include "../config/appconfig.h"
 #include "../appcontrol.h"
+#include "../ui/langresource.h"
+#include "../ui/msgbox.h"
 
 
 using namespace std;
@@ -2200,6 +2203,142 @@ Cursor* View::get_cursor_by_index(int index)
         dex++;
     }
     return NULL;
+}
+
+// The samples [start, end) that stay when the data before (or after) sample
+// index is deleted, in whole words of 64 samples as the snapshot keeps them:
+// rounded outwards, so up to 63 samples on the deleted side stay.
+static bool kept_range(uint64_t index, bool before, uint64_t count,
+                       uint64_t &start, uint64_t &end)
+{
+    if (before) {
+        start = index - index % 64;
+        end = count;
+    }
+    else {
+        start = 0;
+        end = index + 1;
+        if (end % 64 != 0)
+            end += 64 - end % 64;
+        end = min(end, count);
+    }
+
+    return start < end && !(start == 0 && end == count);
+}
+
+bool View::can_delete_data(Cursor *c, bool before)
+{
+    if (c == NULL
+        || _device_agent->have_instance() == false
+        || _device_agent->get_work_mode() != LOGIC
+        || _session->is_working()
+        || _session->is_saving()
+        || _session->have_view_data() == false)
+        return false;
+
+    uint64_t start;
+    uint64_t end;
+    return kept_range(c->index(), before, _session->get_ring_sample_count(), start, end);
+}
+
+void View::delete_data(Cursor *c, bool before)
+{
+    if (!can_delete_data(c, before))
+        return;
+
+    const QString question = QString(before
+        ? L_S(STR_PAGE_MSG, S_ID(IDS_MSG_DELETE_DATA_BEFORE_CURSOR), "Delete the captured data before cursor %1?")
+        : L_S(STR_PAGE_MSG, S_ID(IDS_MSG_DELETE_DATA_AFTER_CURSOR), "Delete the captured data after cursor %1?"))
+        .arg(c->order());
+    const QString info = L_S(STR_PAGE_MSG, S_ID(IDS_MSG_DELETE_DATA_INFO),
+        "This cannot be undone. Cursors in the deleted part are removed. "
+        "The trigger, the other cursors and the decoders move with the data that stays.");
+
+    if (!MsgBox::Confirm(question, info))
+        return;
+
+    uint64_t start = before ? c->index() : 0;
+    uint64_t end = before ? UINT64_MAX : c->index() + 1;
+    const uint64_t old_trig = _session->get_trigger_pos();
+    const double samples_per_pixel = _session->cur_snap_samplerate() * _scale;
+
+    // Rounds start and end to what it keeps.
+    if (!_session->crop_logic_data(start, end))
+        return;
+
+    // Cursors in the deleted part go, the others move with the data.
+    auto &cursors = get_cursorList();
+    for (auto it = cursors.begin(); it != cursors.end(); ) {
+        const uint64_t index = (*it)->index();
+        if (index < start || index >= end) {
+            delete *it;
+            it = cursors.erase(it);
+        }
+        else {
+            (*it)->set_index(index - start);
+            it++;
+        }
+    }
+    make_cursors_order();
+
+    // The trigger, or none if it was deleted: the ruler then counts from
+    // the first sample.
+    if (old_trig >= start && old_trig < end) {
+        _trig_cursor->set_index(_session->get_trigger_pos());
+    }
+    else {
+        _trig_cursor->set_index(0);
+        _show_trig_cursor = false;
+    }
+
+    if (_search_pos >= start && _search_pos < end) {
+        _search_pos -= start;
+    }
+    else {
+        QColor fore(QWidget::palette().color(QWidget::foregroundRole()));
+        fore.setAlpha(View::BackAlpha);
+        _search_pos = 0;
+        _search_hit = false;
+        _search_cursor->set_colour(fore);
+    }
+    _search_cursor->set_index(_search_pos);
+
+    // The same data stays on screen; data_updated() applies the new
+    // timeline, which also limits the zoom and the scroll position.
+    if (samples_per_pixel > 0)
+        _x_offset -= (int64_t)floor(start / samples_per_pixel);
+
+    _time_viewport->clear_measure();
+    data_updated();
+    set_all_update(true);
+    cursor_update();
+    cursor_moved();
+}
+
+void View::show_cursor_menu(Cursor *c, const QPoint &pos)
+{
+    if (c == NULL)
+        return;
+
+    QMenu menu(this);
+    QAction *before = menu.addAction(QString(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_DELETE_DATA_BEFORE_CURSOR),
+                                                 "Delete data before cursor %1")).arg(c->order()));
+    QAction *after = menu.addAction(QString(L_S(STR_PAGE_DLG, S_ID(IDS_DLG_DELETE_DATA_AFTER_CURSOR),
+                                                "Delete data after cursor %1")).arg(c->order()));
+    before->setEnabled(can_delete_data(c, true));
+    after->setEnabled(can_delete_data(c, false));
+
+    QAction *chosen = menu.exec(pos);
+
+    // The menu ran an event loop: make sure the cursor is still there.
+    auto &cursors = get_cursorList();
+    if (chosen == NULL || std::find(cursors.begin(), cursors.end(), c) == cursors.end())
+        return;
+
+    if (chosen == before)
+        delete_data(c, true);
+    else if (chosen == after)
+        delete_data(c, false);
 }
 
 void View::UpdateLanguage()

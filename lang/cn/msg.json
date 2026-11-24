@@ -393,5 +393,17 @@
     {
         "id": "IDS_MSG_NO_DECODED_RESULT",
         "text": "无可导出的数据!"
+    },
+    {
+        "id": "IDS_MSG_DELETE_DATA_BEFORE_CURSOR",
+        "text": "删除光标 %1 之前的采集数据？"
+    },
+    {
+        "id": "IDS_MSG_DELETE_DATA_AFTER_CURSOR",
+        "text": "删除光标 %1 之后的采集数据？"
+    },
+    {
+        "id": "IDS_MSG_DELETE_DATA_INFO",
+        "text": "此操作无法撤销。被删除部分中的光标将被移除。触发点、其余光标和解码器会随保留的数据一起移动。"
     }
 ]

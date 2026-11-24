@@ -386,5 +386,17 @@
     {
         "id": "IDS_MSG_NO_DECODED_RESULT",
         "text": "Keine Daten zum Exportieren!"
+    },
+    {
+        "id": "IDS_MSG_DELETE_DATA_BEFORE_CURSOR",
+        "text": "Die aufgenommenen Daten vor Cursor %1 löschen?"
+    },
+    {
+        "id": "IDS_MSG_DELETE_DATA_AFTER_CURSOR",
+        "text": "Die aufgenommenen Daten nach Cursor %1 löschen?"
+    },
+    {
+        "id": "IDS_MSG_DELETE_DATA_INFO",
+        "text": "Dies kann nicht rückgängig gemacht werden. Cursor im gelöschten Teil werden entfernt. Trigger, die übrigen Cursor und die Decoder bleiben bei den verbleibenden Daten."
     }
 ]

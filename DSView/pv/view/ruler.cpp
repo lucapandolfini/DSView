@@ -307,6 +307,27 @@ void Ruler::leaveEvent(QEvent *)
     update();
 }
 
+Cursor* Ruler::cursor_label_at(const QPoint &pos)
+{
+    auto &cursor_list = _view.get_cursorList();
+    std::vector<Cursor*> hit_order;
+
+    for (auto c : cursor_list) {
+        if (c == _front_label)
+            hit_order.insert(hit_order.begin(), c);
+        else
+            hit_order.push_back(c);
+    }
+
+    for (auto c : hit_order) {
+        bool visible;
+        const QRect r = c->get_label_rect(rect(), visible);
+        if (visible && r.contains(pos))
+            return c;
+    }
+    return NULL;
+}
+
 void Ruler::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() & Qt::LeftButton) {
@@ -422,6 +443,19 @@ void Ruler::mouseReleaseEvent(QMouseEvent *event)
     }
 
     if (event->button() & Qt::RightButton) {
+        // On a cursor's label (logic mode): that cursor's menu, to delete
+        // the data before or after it.
+        Cursor *labelled = NULL;
+        if (!_cursor_sel_visible && !_cursor_go_visible
+            && _view.session().get_device()->get_work_mode() == LOGIC)
+            labelled = cursor_label_at(event->pos());
+
+        if (labelled != NULL) {
+            _view.show_cursor_menu(labelled, mapToGlobal(event->pos()));
+            update();
+            return;
+        }
+
         if (!_cursor_sel_visible) {
             if (!_cursor_go_visible) {
                 _cursor_sel_x = event->pos().x();

@@ -491,6 +491,17 @@ public:
 
     double get_logic_data_view_time();
 
+    /**
+     * Logic mode, capture stopped: keeps the samples [start, end) of the
+     * data on view and deletes the rest. The bounds are first rounded
+     * outwards to whole words of 64 samples, so every sample asked for
+     * stays, and are passed back as used. The timeline shrinks to the data
+     * kept, the trigger moves with it (to 0 if it was deleted), and the
+     * decoders run again. False when there is nothing to delete or the
+     * data cannot be changed now.
+     */
+    bool crop_logic_data(uint64_t &start, uint64_t &end);
+
     int64_t get_ring_sample_count();
 
     inline bool dso_data_is_out_off_range(){

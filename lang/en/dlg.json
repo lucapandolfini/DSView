@@ -982,5 +982,13 @@
     {
         "id": "IDS_DLG_TIME_BAR",
         "text": "Time bar (whole capture, above the ruler)"
+    },
+    {
+        "id": "IDS_DLG_DELETE_DATA_BEFORE_CURSOR",
+        "text": "Delete data before cursor %1"
+    },
+    {
+        "id": "IDS_DLG_DELETE_DATA_AFTER_CURSOR",
+        "text": "Delete data after cursor %1"
     }
 ]

@@ -982,5 +982,13 @@
     {
         "id": "IDS_DLG_TIME_BAR",
         "text": "时间条（整个采集，显示在标尺上方）"
+    },
+    {
+        "id": "IDS_DLG_DELETE_DATA_BEFORE_CURSOR",
+        "text": "删除光标 %1 之前的数据"
+    },
+    {
+        "id": "IDS_DLG_DELETE_DATA_AFTER_CURSOR",
+        "text": "删除光标 %1 之后的数据"
     }
 ]

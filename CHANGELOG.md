@@ -85,6 +85,28 @@ pictures it was added to the fork's build.
 
 ![The logic toolbar of the original fork, and of this tree with Fit, Begin, Trig Pos and End](doc/changelog/toolbar.png)
 
+### Time bar: the whole capture above the ruler
+- A thin bar above the time ruler, logic mode only, stands for the whole
+  capture. A blue box marks the part shown in the window; it stays a few
+  pixels wide however far you zoom in.
+- It also shows the trigger (red line with a flag), the cursors in their
+  colours, and how much of the capture has been received: the received part
+  is darker, which shows while a capture runs or after it was stopped early.
+- Moving through the capture, the zoom stays as it is:
+  - **Click**: centre the view on that point. Keep the button down to drag
+    on from there.
+  - **Drag the blue box**: scroll, holding the point you grabbed.
+  - **Wheel**: zoom in or out, around the pointer while it is over the box,
+    around the middle of the view elsewhere.
+- **Right-drag**: zoom the view to the span dragged over, as a right-drag on
+  the waveform does.
+- **Double-click**: show the whole capture. Double-click again to go back to
+  the zoom you had, centred on where you double-clicked.
+- Hovering shows the time under the pointer, counted from the trigger as on
+  the ruler, or the sample number when the ruler is set to samples.
+- **Time bar (whole capture, above the ruler)** in the Logic Analyzer
+  group turns it off. It is on by default.
+
 ### Cursors
 - Cursor labels that would overlap are drawn compact (number only). The label
   under the mouse, or the one being dragged, expands on top of the others.

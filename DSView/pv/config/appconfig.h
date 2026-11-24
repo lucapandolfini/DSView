@@ -119,6 +119,7 @@ struct AppOptions
     bool  highlightHoverRow;  // Highlight the channel row under the mouse
     bool  decoderChannelColours; // Bus channels of a decoder in its decoded colours
     bool  floatingMeasure;    // Measure panel: "Enable floating measurement" (brackets and values at the mouse)
+    bool  showTimeBar;        // Logic: thin bar above the ruler standing for the whole capture
     std::vector<StringPair> m_protocolFormats;
 };
  

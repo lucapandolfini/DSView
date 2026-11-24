@@ -978,5 +978,9 @@
     {
         "id": "IDS_DLG_DECODER_CHANNEL_COLORS",
         "text": "Bus channels in decoder colors"
+    },
+    {
+        "id": "IDS_DLG_TIME_BAR",
+        "text": "Time bar (whole capture, above the ruler)"
     }
 ]

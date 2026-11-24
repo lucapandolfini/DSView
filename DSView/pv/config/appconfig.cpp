@@ -175,6 +175,7 @@ static void _loadApp(AppOptions &o, QSettings &st)
     getFiled("highlightHoverRow", st, o.highlightHoverRow, true);
     getFiled("decoderChannelColors", st, o.decoderChannelColours, true);
     getFiled("floatingMeasure", st, o.floatingMeasure, false);
+    getFiled("timeBar", st, o.showTimeBar, true);
 
     o.warnofMultiTrig = true;
 
@@ -265,6 +266,7 @@ static void _saveApp(AppOptions &o, QSettings &st)
     setFiled("highlightHoverRow", st, o.highlightHoverRow);
     setFiled("decoderChannelColors", st, o.decoderChannelColours);
     setFiled("floatingMeasure", st, o.floatingMeasure);
+    setFiled("timeBar", st, o.showTimeBar);
 
     QString fmt =  FormatArrayToString(o.m_protocolFormats);
     setFiled("protocalFormats", st, fmt);

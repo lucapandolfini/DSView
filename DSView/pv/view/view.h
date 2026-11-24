@@ -68,6 +68,7 @@ namespace view {
 class Header;
 class DevMode;
 class Ruler;
+class TimeBar;
 class Trace;
 class Viewport;
 class LissajousFigure;
@@ -213,6 +214,14 @@ public:
     void set_scale_offset(double scale, int64_t offset);
     void set_preScale_preOffset();
 
+    /**
+     * The scale before the last set_scale_offset() or zoom(), the one
+     * set_preScale_preOffset() returns to.
+     */
+    inline double get_prescale(){
+        return _preScale;
+    }
+
     void get_traces(int type, std::vector<Trace*> &traces);
 
 	/**
@@ -280,6 +289,12 @@ public:
     inline Ruler* get_ruler(){
         return _ruler;
     }
+
+    /**
+     * Whether the time bar (the whole capture, above the ruler) is shown:
+     * logic mode, with the "Time bar" display option on.
+     */
+    bool timebar_shown();
 
 	/**
 	 * Shows or hides the cursors.
@@ -459,6 +474,8 @@ private:
     // bottom of the pane can slice the lowest trace in half.
     int snap_v_offset(int value);
     void update_margins();
+    // Height above the trace area: the ruler, and the time bar when shown.
+    int get_top_margin();
     // Re-reserves bottom/right space in _statusLayout for the real
     // scrollbars, using their current (not construction-time) geometry -
     // the ViewStatus (_viewbottom) widget can grow taller (DSO's 2-row
@@ -563,6 +580,8 @@ private:
     std::list<QWidget *>    _viewport_list;
     std::map<int, int>      _trace_view_map;
 	Ruler                   *_ruler;
+    // Zero-initialised, as get_top_margin() checks it.
+    TimeBar                 *_timebar = nullptr;
 	Header                  *_header;
     DevMode                 *_devmode;
     

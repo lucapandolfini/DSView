@@ -312,7 +312,7 @@ strings: tranceiver, patters, Protcol, Hight, Adress, Channnel.
 ## Version and installation
 - The window title, the About dialog and `DSView --version` show this tree's
   fix revision, e.g. "DSView v1.6.1-Fix-v16". It is `DS_FIX_REVISION` in
-  CMakeLists.txt: raise it with every release of the tree.
+  CMakeLists.txt.
 - The About dialog shows where this tree comes from, with links: forked from
   [mrehkopf/DSView](https://github.com/mrehkopf/DSView), fork by Schildkroet
   ([Schildkroet/DSView](https://github.com/Schildkroet/DSView)), re-forked by

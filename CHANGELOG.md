@@ -107,6 +107,8 @@ pictures it was added to the fork's build.
 - **Time bar (whole capture, above the ruler)** in the Logic Analyzer
   group turns it off. It is on by default.
 
+![Time bar to browse across the acquisition](doc/changelog/dsview-timebar.png)
+
 ### Delete data before or after a cursor
 - Right-click a cursor, logic mode only, for **Delete data before cursor n**
   and **Delete data after cursor n**. A cursor can be right-clicked on its
@@ -130,6 +132,8 @@ pictures it was added to the fork's build.
   moved to match. A file opened from disk is not changed until it is saved.
 - Not available while a capture runs or while data is being saved: the
   items are greyed out.
+
+![Function to delete the data before or after a time marker](doc/changelog/dsview-delete-data.png)
 
 ### Cursors
 - Cursor labels that would overlap are drawn compact (number only). The label

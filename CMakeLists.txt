@@ -50,7 +50,7 @@ set(DS_VERSION_STRING  ${DS_VERSION_MAJOR}.${DS_VERSION_MINOR}.${DS_VERSION_MICR
 # release of the tree: it is shown in the window title, the About dialog and
 # `DSView --version`, as "1.6.1-Fix-v<n>". A plain variable on purpose, not a
 # cache entry, so a reused build folder cannot keep an old number.
-set(DS_FIX_REVISION 16)
+set(DS_FIX_REVISION 18)
 set(DS_DISPLAY_VERSION "${DS_VERSION_STRING}-Fix-v${DS_FIX_REVISION}")
 
 configure_file (

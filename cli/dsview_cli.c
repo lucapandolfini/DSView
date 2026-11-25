@@ -280,33 +280,49 @@ static void get_paths(char *fw_dir, size_t fw_sz, char *ud_dir, size_t ud_sz)
 	if (!home)
 		home = "/tmp";
 
-	char exe_path[512];
-	ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+	/* Directory holding this binary (empty if it can't be determined). */
+	char exe_dir[512] = "";
+	ssize_t len = readlink("/proc/self/exe", exe_dir, sizeof(exe_dir) - 1);
 	if (len > 0) {
-		exe_path[len] = '\0';
-		char *slash = strrchr(exe_path, '/');
-		if (slash) {
+		exe_dir[len] = '\0';
+		char *slash = strrchr(exe_dir, '/');
+		if (slash)
 			*slash = '\0';
-			/* Primary: DSView/res/ relative to the binary's directory.
-			 * When built in-tree, the binary is at build.dir/dsview-cli
-			 * so ../DSView/res/ points to the firmware.
-			 * When built in build/cli/, ../../../DSView/res/ is the path,
-			 * but we try the shorter path first. */
-			snprintf(fw_dir, fw_sz, "%s/../DSView/res", exe_path);
-
-			/* Check if primary path exists, fall back to source tree layout */
-			if (access(fw_dir, R_OK) != 0) {
-				snprintf(fw_dir, fw_sz, "%s/../../DSView/res", exe_path);
-			}
-		}
+		else
+			exe_dir[0] = '\0';
 	} else {
-		/* Fallback: system install path */
-		snprintf(fw_dir, fw_sz, "/usr/share/DSView/res");
+		exe_dir[0] = '\0';
 	}
 
-	/* Final fallback: system install path if nothing found yet */
-	if (access(fw_dir, R_OK) != 0) {
-		snprintf(fw_dir, fw_sz, "/usr/share/DSView/res");
+	/* Firmware (DSView/res) search order, first readable one wins:
+	 *  1. <bin>/../share/DSView/res - installed layout under any prefix
+	 *     (/usr/local from `make install`, /usr from the .deb), the same
+	 *     place the GUI looks.
+	 *  2. The source tree this binary was built from - for running it
+	 *     straight from the build folder (<build>/bin/dsview-cli, next to
+	 *     the DSView GUI), wherever that folder is.
+	 *  3. The usual system install paths. */
+	char installed[600] = "";
+	if (exe_dir[0])
+		snprintf(installed, sizeof(installed), "%s/../share/DSView/res", exe_dir);
+
+	const char *candidates[] = {
+		installed,
+#ifdef DSVIEW_SOURCE_RES_DIR
+		DSVIEW_SOURCE_RES_DIR,
+#endif
+		"/usr/local/share/DSView/res",
+		"/usr/share/DSView/res",
+	};
+	const size_t n_candidates = sizeof(candidates) / sizeof(candidates[0]);
+
+	/* If none is readable, keep the last one so errors name a sane path. */
+	snprintf(fw_dir, fw_sz, "%s", candidates[n_candidates - 1]);
+	for (size_t i = 0; i < n_candidates; i++) {
+		if (candidates[i][0] && access(candidates[i], R_OK) == 0) {
+			snprintf(fw_dir, fw_sz, "%s", candidates[i]);
+			break;
+		}
 	}
 
 	snprintf(ud_dir, ud_sz, "%s/.config/dsview-cli", home);

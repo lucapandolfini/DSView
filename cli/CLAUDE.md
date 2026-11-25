@@ -427,11 +427,13 @@ mkdir -p build && cd build && cmake .. && make -j$(nproc)
 ```
 
 This builds both the DSView GUI and `dsview-cli`. The binary is placed
-in `build.dir/dsview-cli` alongside the DSView GUI binary.
+in `build/bin/dsview-cli` alongside the DSView GUI binary.
 
 Firmware files live in `DSView/res/` and are located automatically
-at runtime relative to the binary location. The system install path
-`/usr/share/DSView/res/` is used as a fallback.
+at runtime: an installed binary uses `<prefix>/share/DSView/res/`
+(next to its own `bin/`), and a binary run from the build folder uses
+the source tree it was built from. `/usr/local/share/DSView/res/` and
+`/usr/share/DSView/res/` are the final fallbacks.
 
 ---
 

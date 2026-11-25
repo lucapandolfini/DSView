@@ -34,10 +34,8 @@ DSVIEW_ROOT = SCRIPT_DIR.parent
 
 # Search for the dsview-cli binary in likely build output locations
 _CLI_CANDIDATES = [
-    # in-tree build (EXECUTABLE_OUTPUT_PATH)
-    DSVIEW_ROOT / "build.dir" / "dsview-cli",
-    DSVIEW_ROOT / "build" / "cli" / "dsview-cli",   # out-of-source: build/cli/
-    DSVIEW_ROOT / "build" / "dsview-cli",            # out-of-source: build/
+    # build folder (`make` / `cmake -B build`): next to the GUI in build/bin
+    DSVIEW_ROOT / "build" / "bin" / "dsview-cli",
     # system install (Debian package)
     Path("/usr/bin/dsview-cli"),
     Path("/usr/local/bin/dsview-cli"),                # local install

@@ -52,7 +52,7 @@ cmake ..
 make dsview-cli -j$(nproc)
 ```
 
-The binary is placed in `build.dir/dsview-cli` alongside the DSView GUI.
+The binary is placed in `build/bin/dsview-cli` alongside the DSView GUI.
 
 To build everything (GUI + CLI):
 
@@ -62,8 +62,10 @@ make -j$(nproc)
 
 ### Verify the build
 
+From the repository root:
+
 ```bash
-./build.dir/dsview-cli scan
+./build/bin/dsview-cli scan
 ```
 
 This should print JSON listing connected DreamSourceLab devices (or an

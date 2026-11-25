@@ -45,6 +45,9 @@ target_compile_definitions(dsview-cli PRIVATE
     HAVE_LIBUSB_1_0=1
     HAVE_DSL_DEVICE=1
     HAVE_LA_DEMO=1
+    # Lets a binary run straight from the build folder find the firmware
+    # in the source tree; installed copies use <prefix>/share/DSView/res.
+    DSVIEW_SOURCE_RES_DIR="${CMAKE_SOURCE_DIR}/DSView/res"
 )
 
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
@@ -68,9 +71,10 @@ target_link_libraries(dsview-cli
     ${PY_LIB}
 )
 
-# Place dsview-cli alongside the DSView GUI binary
+# Place dsview-cli alongside the DSView GUI binary, in <build>/bin. Nothing
+# is written to the source tree.
 set_target_properties(dsview-cli PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build.dir"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
 install(TARGETS dsview-cli DESTINATION ${CMAKE_INSTALL_BINDIR})

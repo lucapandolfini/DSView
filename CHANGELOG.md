@@ -337,3 +337,44 @@ strings: tranceiver, patters, Protcol, Hight, Adress, Channnel.
   package cannot depend on, and if a `make install` copy in /usr/local would be
   started instead of the package. `make uninstall` keeps the files that also
   belong to the installed package (desktop entry, metainfo, udev rule).
+
+---
+
+## Pull requests merged from DreamSourceLab/DSView
+
+Two pull requests to the original
+[DreamSourceLab/DSView](https://github.com/DreamSourceLab/DSView) repository
+are merged into this tree.
+
+### Command-line tool and MCP server ([#899](https://github.com/DreamSourceLab/DSView/pull/899))
+By Nishanth Menon. The files are in `cli/`; cli/README.md explains the setup.
+- `dsview-cli` works DSLogic logic analyzers and DSCope oscilloscopes without
+  the GUI, and prints JSON. `scan` lists the connected devices, `info` shows a
+  device's channels, sample rates and trigger types, and `capture` records to a
+  file. Capture options cover sample rate and count, channels, trigger and, on
+  a DSCope, voltage per division, coupling and probe factor.
+- `dsview_mcp.py` is an MCP (Model Context Protocol) server built on it, so AI
+  assistants such as Claude Code can capture, decode and summarise signals. It
+  needs the Python packages listed in cli/requirements.txt.
+- `make` builds `dsview-cli` with DSView, into build/bin next to it.
+  `make install` and the `make deb` package install it in bin, and the MCP
+  server in share/DSView/cli.
+
+Changed while merging:
+- Upstream builds `dsview-cli` into `build.dir/`, inside the source tree. Here
+  it goes to build/bin, like DSView.
+- `dsview-cli` finds the device firmware wherever it runs from: in
+  `<prefix>/share/DSView/res` next to its own folder when installed, as DSView
+  does, or in the source tree when run from the build folder. Upstream looked
+  only in /usr/share, so a `make install` copy in /usr/local found none.
+- The pull request also carries an older commit that sets up a .deb package.
+  Its CMakeLists.txt settings are left out, and this tree's own `make deb`
+  (above) is kept. They would have made every package a .deb, including the
+  Windows installer.
+
+### Keyboard zoom: `[`, `]` and `F` ([#908](https://github.com/DreamSourceLab/DSView/pull/908))
+By Huang Rui.
+- `]` zooms in, as the Left arrow key does, and `[` zooms out, as the Right
+  arrow key does. The arrow keys still work.
+- `F` zooms out to show the whole capture. This is the horizontal zoom: the
+  toolbar's Fit button fits the channels vertically.
